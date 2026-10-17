@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +20,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -27,6 +29,7 @@ from pipecat.processors.frameworks.rtvi.frames import RTVIClientMessageFrame, RT
 from friday.config import Config
 from friday.llm.providers import SlowResponseWatch, filler_phrase
 from friday.memory.store import MemoryStore
+from friday.metrics import TurnTimer, vram_used_gb
 from friday.persona import system_prompt
 from friday.tools.confirm import ConfirmationManager, PendingAction
 from friday.tools.registry import ToolRegistry
@@ -77,8 +80,10 @@ class FridayBrain(FrameProcessor):
         context: LLMContext,
         watch: SlowResponseWatch,
         tts: dict[Lang, FrameProcessor],
+        timer: TurnTimer | None = None,
     ) -> None:
         super().__init__(name="FridayBrain")
+        self._timer = timer or TurnTimer()
         self._cfg = cfg
         self._deps = deps
         self._context = context
@@ -122,6 +127,7 @@ class FridayBrain(FrameProcessor):
         return self._cfg.tts.voice_pt if self.lang == "pt" else self._cfg.tts.voice_en
 
     async def _on_transcription(self, frame: TranscriptionFrame) -> None:
+        self._timer.mark("stt_done")
         text = frame.text.strip()
         result = frame.result if isinstance(frame.result, SttResult) else None
         if result and result.avg_logprob < MIN_AVG_LOGPROB:
@@ -211,14 +217,23 @@ class FridayBrain(FrameProcessor):
 
 
 class ReplyTap(FrameProcessor):
-    """Fica depois do LLM: regista a resposta e o estado da voz para a interface."""
+    """Fica depois do LLM: regista a resposta, o estado da voz e a latência para a interface."""
 
-    def __init__(self, brain: FridayBrain, deps: VoiceDeps, watch: SlowResponseWatch) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        deps: VoiceDeps,
+        watch: SlowResponseWatch,
+        timer: TurnTimer,
+        current_lang: Callable[[], Lang] = lambda: "pt",
+    ) -> None:
         super().__init__(name="ReplyTap")
-        self._brain = brain
+        self._cfg = cfg
         self._deps = deps
         self._watch = watch
+        self._timer = timer
         self._buffer: list[str] = []
+        self._current_lang = current_lang
 
     async def emit(self, event: dict[str, Any]) -> None:
         await self.push_frame(RTVIServerMessageFrame(data=event))
@@ -227,9 +242,12 @@ class ReplyTap(FrameProcessor):
         await super().process_frame(frame, direction)
         await self.push_frame(frame, direction)
 
-        if isinstance(frame, LLMFullResponseStartFrame):
+        if isinstance(frame, UserStoppedSpeakingFrame):
+            self._timer.mark("speech_end")
+        elif isinstance(frame, LLMFullResponseStartFrame):
             self._buffer = []
         elif isinstance(frame, LLMTextFrame):
+            self._timer.mark("llm_first_token")
             self._watch.first_token()
             self._buffer.append(frame.text)
         elif isinstance(frame, LLMFullResponseEndFrame):
@@ -239,6 +257,18 @@ class ReplyTap(FrameProcessor):
                 self._deps.memory.log_turn("assistant", text)
                 await self.emit(events.transcript("assistant", text))
         elif isinstance(frame, BotStartedSpeakingFrame) and direction == FrameDirection.UPSTREAM:
+            self._timer.mark("tts_first_audio")
             await self.emit(events.state("speaking"))
+            await self._emit_system()
         elif isinstance(frame, BotStoppedSpeakingFrame) and direction == FrameDirection.UPSTREAM:
             await self.emit(events.state("listening"))
+
+    async def _emit_system(self) -> None:
+        voice = self._cfg.tts.voice_pt if self._current_lang() == "pt" else self._cfg.tts.voice_en
+        latency = self._timer.report().get("total_ms")
+        model = (
+            self._cfg.llm.local_model
+            if self._cfg.llm.provider == "local"
+            else (self._cfg.llm.cloud_model or self._cfg.llm.local_model)
+        )
+        await self.emit(events.system(model, voice, latency, vram_used_gb()))

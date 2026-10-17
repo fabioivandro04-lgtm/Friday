@@ -424,6 +424,7 @@ dependencies = [
     { name = "ddgs" },
     { name = "fastapi" },
     { name = "fastembed" },
+    { name = "nvidia-ml-py" },
     { name = "pipecat-ai", extra = ["piper", "websocket", "whisper"] },
     { name = "sqlite-vec" },
     { name = "uvicorn", extra = ["standard"] },
@@ -442,6 +443,7 @@ requires-dist = [
     { name = "ddgs", specifier = "==9.16.0" },
     { name = "fastapi", specifier = "==0.143.3" },
     { name = "fastembed", specifier = "==0.9.0" },
+    { name = "nvidia-ml-py", specifier = "==13.615.71" },
     { name = "pipecat-ai", extras = ["local-smart-turn-v3", "openai", "piper", "silero", "websocket", "whisper"], specifier = "==1.12.0" },
     { name = "sqlite-vec", specifier = "==0.1.9" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.54.0" },
@@ -1020,6 +1022,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6f/c9/47094f597015009f310b8c900def59065ef1ff5a6fe7b51fc65ec58ec2c6/numpy-2.5.4-cp312-cp312-win32.whl", hash = "sha256:9968ab7e49b93ac6e1c3b2239732183152c9150f16308d30b66a372cffe3483c", size = 6138936, upload-time = "2026-10-10T20:03:01.626Z" },
     { url = "https://files.pythonhosted.org/packages/12/33/fefe62073dc8acfd0f2b9ed7c003af2f50aa61555e113e6db02b8f79f145/numpy-2.5.4-cp312-cp312-win_amd64.whl", hash = "sha256:a7b1b6353e36a7e50de2973a38d705c88ee93adcf120673cee7f45a4a3fa223a", size = 12573091, upload-time = "2026-10-10T20:03:04.349Z" },
     { url = "https://files.pythonhosted.org/packages/1a/07/161270b0c2eec56e4c905f6d6d22e1b836887b2cb189d3f5820aa588e9dd/numpy-2.5.4-cp312-cp312-win_arm64.whl", hash = "sha256:aa1cce2ff3f8d953de38b76bf44602caeb69f101430208f64a10067f7cb4b1d3", size = 10521630, upload-time = "2026-10-10T20:03:06.767Z" },
+]
+
+[[package]]
+name = "nvidia-ml-py"
+version = "13.615.71"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/30/b25216758be3d3e2834825d8193609e2d71c770a8bd7984438c058c90268/nvidia_ml_py-13.615.71.tar.gz", hash = "sha256:bebe4e48f51b1dc75028c0815cb7bfa14a31a5bb80be70c9d980c6036953fc3d", size = 57485, upload-time = "2026-09-25T15:15:28.226Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/a1/1681dfa1c904d4e3e72e51b55a0ff012d50b766843ef832d584abe2113c6/nvidia_ml_py-13.615.71-py3-none-any.whl", hash = "sha256:959bf4adf6fe1308e4bd739e722236b0d1ec8392e2cefad33ff70c311380b9b6", size = 58132, upload-time = "2026-09-25T15:15:26.54Z" },
 ]
 
 [[package]]

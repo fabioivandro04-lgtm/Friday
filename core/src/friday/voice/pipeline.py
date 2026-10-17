@@ -29,6 +29,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from friday.config import Config
 from friday.llm.providers import SlowResponseWatch, select_endpoint
+from friday.metrics import TurnTimer
 from friday.tools.registry import ToolRegistry, execute
 from friday.voice import events
 from friday.voice.processors import FridayBrain, ReplyTap, VoiceDeps
@@ -91,8 +92,9 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
         context, user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
     )
     watch = SlowResponseWatch(cfg.llm.slow_threshold_s)
-    brain = FridayBrain(cfg, deps, context=context, watch=watch, tts=tts)
-    tap = ReplyTap(brain, deps, watch)
+    timer = TurnTimer()
+    brain = FridayBrain(cfg, deps, context=context, watch=watch, tts=tts, timer=timer)
+    tap = ReplyTap(cfg, deps, watch, timer, current_lang=lambda: brain.lang)
 
     async def call_tool(params: FunctionCallParams) -> None:
         result = await execute(
