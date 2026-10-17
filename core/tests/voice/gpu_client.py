@@ -23,7 +23,7 @@ async def encode_audio(serializer: ProtobufFrameSerializer, pcm: bytes) -> list[
     step = 16000 * 2 * CHUNK_MS // 1000
     return [
         await serializer.serialize(
-            AudioRawFrame(audio=pcm[i : i + step], sample_rate=16000, num_channels=1)
+            OutputAudioRawFrame(audio=pcm[i : i + step], sample_rate=16000, num_channels=1)
         )
         for i in range(0, len(pcm), step)
     ]

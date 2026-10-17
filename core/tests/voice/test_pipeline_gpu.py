@@ -37,6 +37,12 @@ def test_spoken_question_gets_transcript_and_audio():
 
     user_texts, got_audio = [], False
     with client.websocket_connect(f"/ws?token={token}") as ws:
+        # Como a app: só falar depois de o pipeline estar pronto.
+        while not (
+            (e := rtvi_event(asyncio.run(serializer.deserialize(ws.receive_bytes()))))
+            and e["type"] == "state"
+        ):
+            pass
         for chunk in chunks:
             ws.send_bytes(chunk)
         for _ in range(2000):

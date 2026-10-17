@@ -15,6 +15,9 @@ from friday.tools.confirm import ConfirmationManager
 from friday.tools.registry import ToolRegistry
 from friday.tools.web_search import make_web_search_tool
 
+# A interface (app/dist, gerada por `npm run build`) é servida em / para o telemóvel.
+APP_DIST = Path(__file__).resolve().parents[3] / "app" / "dist"
+
 
 def build_deps(cfg: Config):
     from friday.voice.pipeline import VoiceDeps
@@ -38,7 +41,7 @@ def main() -> None:
     async def voice_handler(websocket):
         await run_voice_session(websocket, cfg, deps)
 
-    app = create_app(cfg, voice_handler=voice_handler)
+    app = create_app(cfg, voice_handler=voice_handler, static_dir=APP_DIST)
     uvicorn.run(app, host=cfg.server.host, port=cfg.server.port)
 
 

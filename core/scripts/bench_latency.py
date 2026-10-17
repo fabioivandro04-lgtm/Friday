@@ -49,6 +49,11 @@ async def _one_run(url: str, wav: Path) -> tuple[int | None, int | None]:
     pcm = read_wav(wav) + b"\x00\x00" * int(16000 * _TRAILING_SILENCE_S)
     chunks = await encode_audio(serializer, pcm)
     async with websockets.connect(url, max_size=None) as ws:
+        # Como a app: só falar depois de o pipeline estar pronto.
+        while True:
+            event = rtvi_event(await serializer.deserialize(await ws.recv()))
+            if event and event["type"] == "state":
+                break
         for chunk in chunks:
             await ws.send(chunk)
             await asyncio.sleep(CHUNK_MS / 1000)  # tempo real, como um microfone

@@ -72,3 +72,10 @@ def test_serves_static_pwa(cfg, tmp_path):
     (static / "index.html").write_text("<h1>Friday</h1>")
     resp = _client(create_app(cfg, static_dir=static)).get("/")
     assert "Friday" in resp.text
+
+
+@pytest.mark.parametrize("header", ["X-Forwarded-For", "Tailscale-User-Login"])
+def test_pair_refused_through_a_proxy(cfg, header):
+    # Via `tailscale serve` o pedido chega de 127.0.0.1, mas vem de outro dispositivo.
+    resp = _client(create_app(cfg)).get("/pair", headers={header: "100.101.5.9"})
+    assert resp.status_code == 403

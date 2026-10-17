@@ -115,7 +115,11 @@ class FridayBrain(FrameProcessor):
             # Interromper a Friday enquanto pergunta "confirmas?" anula a ação.
             if self._bot_speaking:
                 await self._cancel_pending()
-        elif isinstance(frame, ErrorFrame) and direction == FrameDirection.UPSTREAM:
+        elif isinstance(frame, ErrorFrame):
+            # Depois de um erro já não vem resposta: nada de "Deixa-me ver…".
+            self._watch.first_token()
+            if self._filler_task:
+                self._filler_task.cancel()
             await self.emit(
                 events.system(self._cfg.llm.local_model, self._voice(), None, None, frame.error)
             )

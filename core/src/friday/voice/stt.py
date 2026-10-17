@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from loguru import logger
 from pipecat.frames.frames import ErrorFrame, Frame, TranscriptionFrame
 from pipecat.services.whisper.stt import WhisperSTTService
 from pipecat.utils.time import time_now_iso8601
@@ -43,7 +44,7 @@ class FridayWhisperSTT(WhisperSTTService):
         segments, info = self._model.transcribe(
             audio_float,
             language=language,
-            vad_filter=True,
+            vad_filter=False,
             condition_on_previous_text=False,
             hotwords="Friday",  # o nome dela no meio de português
         )
@@ -70,6 +71,7 @@ class FridayWhisperSTT(WhisperSTTService):
         audio_float = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
         result = await asyncio.to_thread(self._transcribe, audio_float)
         await self.stop_processing_metrics()
+        logger.debug(f"{self}: {len(audio) / 32000:.2f}s de áudio → {result}")
         if not result.text:
             return  # ruído ou silêncio: não responder
         yield TranscriptionFrame(

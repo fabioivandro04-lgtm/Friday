@@ -52,3 +52,8 @@ button { font-family: inherit; }
 .mic { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: #0A141B; color: var(--accent); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .mic[aria-pressed="true"] { background: var(--accent); color: var(--ground); }
 .hint { margin: 0; font-family: var(--font-data); font-size: 11px; letter-spacing: 0.12em; color: var(--muted); }
+
+.pairing { max-width: 420px; margin: 12vh auto; padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
+.pairing label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+.pairing input { min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #2A3744; background: var(--panel); color: var(--text); font-family: var(--font-data); font-size: 14px; }
+.pairing code { color: var(--accent); }

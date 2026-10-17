@@ -14,6 +14,8 @@ from friday.server.auth import TokenStore, is_allowed_ip, is_localhost
 
 VoiceHandler = Callable[[WebSocket], Awaitable[None]]
 WS_UNAUTHORISED = 4401
+# Cabeçalhos que um proxy (ex.: `tailscale serve`) acrescenta: o pedido não é deste PC.
+_PROXY_HEADERS = ("x-forwarded-for", "tailscale-user-login", "forwarded")
 
 
 def _client_ip(conn: Request | WebSocket) -> str:
@@ -39,7 +41,8 @@ def create_app(
     @app.get("/pair")
     async def pair(request: Request):
         # O token só é mostrado no próprio PC; o utilizador cola-o no telemóvel.
-        if not is_localhost(_client_ip(request)):
+        proxied = any(h in request.headers for h in _PROXY_HEADERS)
+        if proxied or not is_localhost(_client_ip(request)):
             return JSONResponse({"detail": "forbidden"}, status_code=403)
         return {"token": tokens.get_or_create()}
 

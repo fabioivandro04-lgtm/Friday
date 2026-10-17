@@ -28,7 +28,7 @@ def test_empty_when_no_speech():
     assert r.text == "" and r.avg_logprob == 0.0
 
 
-def test_transcribe_detects_language_and_filters_silence():
+def test_transcribe_detects_language_without_second_vad():
     import numpy as np
 
     from friday.voice.stt import FridayWhisperSTT
@@ -46,7 +46,8 @@ def test_transcribe_detects_language_and_filters_silence():
     r = stt._transcribe(np.zeros(16000, dtype=np.float32))
     assert r.text == "olá" and r.language == "pt"
     assert calls["language"] is None
-    assert calls["vad_filter"] is True
+    # O Pipecat já segmenta por VAD; o filtro do faster-whisper apagava segmentos curtos.
+    assert calls["vad_filter"] is False
     assert calls["condition_on_previous_text"] is False
     assert calls["hotwords"] == "Friday"
 

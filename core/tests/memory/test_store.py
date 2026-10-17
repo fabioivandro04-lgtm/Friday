@@ -38,3 +38,13 @@ def test_context_for_joins_facts(store):
 def test_log_turn_does_not_become_fact(store):
     store.log_turn("user", "Gosto de café")
     assert store.search("café") == []
+
+
+def test_fast_embedder_default_model_is_supported_by_fastembed():
+    from fastembed import TextEmbedding
+
+    from friday.memory.store import FastEmbedder
+
+    supported = {m["model"]: m["dim"] for m in TextEmbedding.list_supported_models()}
+    assert FastEmbedder.MODEL in supported
+    assert supported[FastEmbedder.MODEL] == FastEmbedder.dim

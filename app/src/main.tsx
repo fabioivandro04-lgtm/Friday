@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Hud } from "./components/Hud";
-import { initialState } from "./lib/state";
+import { App } from "./App";
 import "./styles.css";
 import { theme } from "./theme";
 
@@ -20,6 +19,6 @@ for (const [k, v] of Object.entries(vars)) document.documentElement.style.setPro
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Hud state={initialState} onConfirm={() => {}} onCancel={() => {}} onTalk={() => {}} />
+    <App />
   </StrictMode>,
 );

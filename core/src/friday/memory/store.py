@@ -21,12 +21,13 @@ class Embedder(Protocol):
 class FastEmbedder:
     """Embeddings multilíngues pequenos, na CPU (o modelo é descarregado na 1.ª utilização)."""
 
+    MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     dim = 384
 
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-small") -> None:
+    def __init__(self) -> None:
         from fastembed import TextEmbedding
 
-        self._model = TextEmbedding(model_name)
+        self._model = TextEmbedding(self.MODEL)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [list(map(float, v)) for v in self._model.embed(texts)]

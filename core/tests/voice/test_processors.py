@@ -163,3 +163,39 @@ async def test_stale_confirm_click_does_nothing(brain, deps, sent):
     msg = RTVIClientMessageFrame(msg_id="1", type="confirm", data={"id": "old"})
     await run_test(brain, frames_to_send=[msg])
     assert sent == []
+
+
+def _fast_brain(deps, tts, context):
+    from friday.config import LlmConfig
+
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"), llm=LlmConfig(slow_threshold_s=0.05))
+    return FridayBrain(cfg, deps, context=context, watch=SlowResponseWatch(0.05), tts=tts)
+
+
+async def test_filler_when_llm_is_slow(deps, tts, context):
+    from pipecat.tests.utils import SleepFrame
+
+    brain = _fast_brain(deps, tts, context)
+    down, _ = await run_test(
+        brain, frames_to_send=[_tr("conta-me uma história longa"), SleepFrame(0.2)]
+    )
+    assert "Deixa-me ver…" in _spoken(down)
+
+
+async def test_no_filler_after_llm_error(deps, tts, context):
+    from pipecat.frames.frames import ErrorFrame
+    from pipecat.tests.utils import SleepFrame
+
+    brain = _fast_brain(deps, tts, context)
+    down, _ = await run_test(
+        brain,
+        frames_to_send=[
+            _tr("conta-me uma história longa"),
+            SleepFrame(0.01),  # o erro do LLM chega depois da transcrição
+            ErrorFrame("Connection error."),
+            SleepFrame(0.2),
+        ],
+    )
+    spoken = _spoken(down)
+    assert "O modelo local não está a responder." in spoken
+    assert "Deixa-me ver…" not in spoken
