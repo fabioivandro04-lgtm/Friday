@@ -34,3 +34,9 @@ def test_missing_tts_voices_raises(tmp_path):
     p.write_text("")
     with pytest.raises(ValueError, match="voice_pt"):
         load_config(p, env={})
+
+
+def test_tts_download_dir_default(tmp_path):
+    p = tmp_path / "friday.toml"
+    p.write_text('[tts]\nvoice_pt = "pt_PT-tugão-medium"\nvoice_en = "en_GB-alan-medium"\n')
+    assert load_config(p, env={}).tts.download_dir == "models/piper"

@@ -4,6 +4,7 @@ from friday.llm.providers import (
     cloud_endpoint,
     filler_phrase,
     local_endpoint,
+    select_endpoint,
 )
 
 
@@ -58,3 +59,17 @@ def test_no_filler_after_first_token():
 
 def test_no_filler_before_start():
     assert SlowResponseWatch(2.0, clock=lambda: 99.0).should_say_filler() is False
+
+
+def test_select_endpoint_local_by_default():
+    cfg = LlmConfig(cloud_model="a/b", cloud_api_key="k")
+    assert select_endpoint(cfg).base_url == "http://localhost:11434/v1"
+
+
+def test_select_endpoint_cloud_when_chosen():
+    cfg = LlmConfig(provider="cloud", cloud_model="a/b", cloud_api_key="k")
+    assert select_endpoint(cfg).base_url == "https://openrouter.ai/api/v1"
+
+
+def test_select_endpoint_falls_back_to_local_without_key():
+    assert select_endpoint(LlmConfig(provider="cloud", cloud_model="a/b")).model == "qwen3:8b"

@@ -18,6 +18,8 @@ class SttConfig:
 
 @dataclass(frozen=True)
 class LlmConfig:
+    # "local" (Ollama, grátis) ou "cloud" (OpenRouter, precisa de chave).
+    provider: str = "local"
     local_model: str = "qwen3:8b"
     ollama_url: str = "http://localhost:11434/v1"
     cloud_model: str | None = None
@@ -27,8 +29,10 @@ class LlmConfig:
 
 @dataclass(frozen=True)
 class TtsConfig:
+    # IDs de vozes Piper (ex.: "pt_PT-tugão-medium"); descarregadas para download_dir.
     voice_pt: str
     voice_en: str
+    download_dir: str = "models/piper"
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,8 @@ model = "large-v3-turbo"
 device = "cuda"
 
 [llm]
+# "local" (Ollama, grátis) ou "cloud" (OpenRouter).
+provider = "local"
 # Modelo local no Ollama (alternativa mais inteligente: "qwen3:14b").
 local_model = "qwen3:8b"
 ollama_url = "http://localhost:11434/v1"
@@ -17,9 +19,10 @@ ollama_url = "http://localhost:11434/v1"
 slow_threshold_s = 2.0
 
 [tts]
-# Caminhos para as vozes Piper (.onnx) — ver README.
-voice_pt = "models/piper/pt_PT-tugão-medium.onnx"
-voice_en = "models/piper/en_GB-alan-medium.onnx"
+# IDs das vozes Piper; são descarregadas automaticamente na primeira vez.
+voice_pt = "pt_PT-tugão-medium"
+voice_en = "en_GB-alan-medium"
+download_dir = "models/piper"
 
 [server]
 # 0.0.0.0 para o telemóvel chegar pelo Tailscale; só IPs locais/Tailscale são aceites.

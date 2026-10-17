@@ -36,6 +36,11 @@ def cloud_endpoint(cfg: LlmConfig) -> LlmEndpoint | None:
     )
 
 
+def select_endpoint(cfg: LlmConfig) -> LlmEndpoint:
+    cloud = cloud_endpoint(cfg) if cfg.provider == "cloud" else None
+    return cloud or local_endpoint(cfg)
+
+
 def filler_phrase(lang: Literal["pt", "en"]) -> str:
     return _FILLERS[lang]
 
