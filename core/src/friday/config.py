@@ -49,12 +49,21 @@ class MemoryConfig:
 
 
 @dataclass(frozen=True)
+class WakeConfig:
+    # Modo "sempre à escuta": só responde depois de ouvir uma destas frases.
+    enabled: bool = False
+    phrases: list[str] = field(default_factory=lambda: ["friday"])
+    window_s: float = 15.0
+
+
+@dataclass(frozen=True)
 class Config:
     tts: TtsConfig
     stt: SttConfig = field(default_factory=SttConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    wake: WakeConfig = field(default_factory=WakeConfig)
 
 
 # Segredos nunca vêm do TOML (que pode acabar no Git), só do ambiente / .env.
@@ -88,4 +97,5 @@ def load_config(path: Path, env: Mapping[str, str] = os.environ) -> Config:
         llm=llm,
         server=server,
         memory=MemoryConfig(**_section(MemoryConfig, raw.get("memory", {}))),
+        wake=WakeConfig(**_section(WakeConfig, raw.get("wake", {}))),
     )

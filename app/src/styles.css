@@ -57,3 +57,5 @@ button { font-family: inherit; }
 .pairing label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
 .pairing input { min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #2A3744; background: var(--panel); color: var(--text); font-family: var(--font-data); font-size: 14px; }
 .pairing code { color: var(--accent); }
+.pairing .check { flex-direction: row; align-items: center; gap: 10px; }
+.pairing .check input { min-height: 20px; width: 20px; }

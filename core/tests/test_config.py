@@ -40,3 +40,18 @@ def test_tts_download_dir_default(tmp_path):
     p = tmp_path / "friday.toml"
     p.write_text('[tts]\nvoice_pt = "pt_PT-tugão-medium"\nvoice_en = "en_GB-alan-medium"\n')
     assert load_config(p, env={}).tts.download_dir == "models/piper"
+
+
+def test_wake_word_defaults_off(tmp_path):
+    p = tmp_path / "friday.toml"
+    p.write_text('[tts]\nvoice_pt = "a"\nvoice_en = "b"\n')
+    wake = load_config(p, env={}).wake
+    assert wake.enabled is False
+    assert wake.phrases == ["friday"]
+    assert wake.window_s == 15.0
+
+
+def test_wake_word_enabled(tmp_path):
+    p = tmp_path / "friday.toml"
+    p.write_text('[tts]\nvoice_pt = "a"\nvoice_en = "b"\n[wake]\nenabled = true\n')
+    assert load_config(p, env={}).wake.enabled is True

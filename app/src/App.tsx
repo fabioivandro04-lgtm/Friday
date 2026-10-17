@@ -36,7 +36,9 @@ function Connected({ settings, createClient }: { settings: Settings; createClien
       createClient,
     });
     connRef.current = conn;
-    void conn.connect();
+    void conn.connect().then(() => {
+      if (settings.alwaysListening) conn.setMicEnabled(true);
+    });
     return () => {
       void conn.disconnect();
     };
@@ -64,7 +66,8 @@ function Connected({ settings, createClient }: { settings: Settings; createClien
         ptt.toggle();
         setTalking((t) => !t);
       }}
-      talking={talking}
+      talking={talking || !!settings.alwaysListening}
+      hint={settings.alwaysListening ? "DIZ “FRIDAY” PARA FALARES" : undefined}
     />
   );
 }
@@ -72,9 +75,11 @@ function Connected({ settings, createClient }: { settings: Settings; createClien
 function Pairing({ initial, onDone }: { initial: Settings; onDone: (s: Settings) => void }) {
   const [coreUrl, setCoreUrl] = useState(initial.coreUrl);
   const [token, setToken] = useState("");
+  const [alwaysListening, setAlwaysListening] = useState(!!initial.alwaysListening);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (coreUrl.trim() && token.trim()) onDone({ coreUrl: coreUrl.trim(), token: token.trim() });
+    if (coreUrl.trim() && token.trim())
+      onDone({ coreUrl: coreUrl.trim(), token: token.trim(), alwaysListening });
   };
   return (
     <form className="pairing" onSubmit={submit}>
@@ -89,6 +94,10 @@ function Pairing({ initial, onDone }: { initial: Settings; onDone: (s: Settings)
       <label>
         Token
         <input value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" />
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={alwaysListening} onChange={(e) => setAlwaysListening(e.target.checked)} />
+        Sempre à escuta (diz “Friday”; ativa [wake] no friday.toml)
       </label>
       <button type="submit" className="btn btn-primary">
         Ligar

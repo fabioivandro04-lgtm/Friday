@@ -36,6 +36,7 @@ from friday.tools.registry import ToolRegistry
 from friday.voice import events
 from friday.voice.language import Lang, choose_language
 from friday.voice.stt import SttResult
+from friday.voice.wakeword import WakeGate
 
 # Abaixo disto, o Whisper provavelmente ouviu mal: melhor pedir para repetir.
 MIN_AVG_LOGPROB = -1.0
@@ -81,8 +82,10 @@ class FridayBrain(FrameProcessor):
         watch: SlowResponseWatch,
         tts: dict[Lang, FrameProcessor],
         timer: TurnTimer | None = None,
+        wake: WakeGate | None = None,
     ) -> None:
         super().__init__(name="FridayBrain")
+        self._wake = wake
         self._timer = timer or TurnTimer()
         self._cfg = cfg
         self._deps = deps
@@ -133,6 +136,10 @@ class FridayBrain(FrameProcessor):
     async def _on_transcription(self, frame: TranscriptionFrame) -> None:
         self._timer.mark("stt_done")
         text = frame.text.strip()
+        if self._wake and not self._wake.feed(text):
+            # Conversa que não é para a Friday: o agregador também a ignora.
+            await self.push_frame(frame)
+            return
         result = frame.result if isinstance(frame.result, SttResult) else None
         if result and result.avg_logprob < MIN_AVG_LOGPROB:
             await self.say("repeat")

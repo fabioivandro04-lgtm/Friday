@@ -1,6 +1,7 @@
 // Endereço do Core e token de emparelhamento, guardados neste dispositivo.
 
-export type Settings = { coreUrl: string; token: string };
+// alwaysListening: microfone sempre ligado; o Core só responde a "Friday" ([wake] no friday.toml).
+export type Settings = { coreUrl: string; token: string; alwaysListening?: boolean };
 
 const KEY = "friday.settings";
 const LOCAL_CORE = "http://127.0.0.1:8765";

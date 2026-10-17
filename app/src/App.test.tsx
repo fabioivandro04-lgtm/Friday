@@ -6,9 +6,9 @@ import type { ClientCallbacks, PipecatLike } from "./lib/connection";
 beforeEach(() => localStorage.clear());
 
 function fakeFactory() {
-  const made: { cb: ClientCallbacks; urls: string[] }[] = [];
+  const made: { cb: ClientCallbacks; urls: string[]; mic: boolean[] }[] = [];
   const createClient = (cb: ClientCallbacks): PipecatLike => {
-    const entry = { cb, urls: [] as string[] };
+    const entry = { cb, urls: [] as string[], mic: [] as boolean[] };
     made.push(entry);
     return {
       async connect(p) {
@@ -16,7 +16,9 @@ function fakeFactory() {
         cb.onConnected();
       },
       async disconnect() {},
-      enableMic() {},
+      enableMic(on) {
+        entry.mic.push(on);
+      },
       sendClientMessage() {},
     };
   };
@@ -40,4 +42,14 @@ test("depois de emparelhar liga ao Core e mostra o HUD", async () => {
   expect(await screen.findByText("A OUVIR")).toBeInTheDocument();
   expect(f.made[0].urls).toEqual(["ws://127.0.0.1:8765/ws?token=abc"]);
   expect(JSON.parse(localStorage.getItem("friday.settings")!).token).toBe("abc");
+});
+
+test("modo sempre à escuta liga o microfone e muda a dica", async () => {
+  const f = fakeFactory();
+  render(<App createClient={f.createClient} />);
+  await userEvent.type(screen.getByLabelText("Token"), "abc");
+  await userEvent.click(screen.getByLabelText(/Sempre à escuta/));
+  await userEvent.click(screen.getByRole("button", { name: "Ligar" }));
+  expect(await screen.findByText(/DIZ “FRIDAY”/)).toBeInTheDocument();
+  expect(f.made[0].mic).toEqual([true]);
 });

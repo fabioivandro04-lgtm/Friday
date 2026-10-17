@@ -12,9 +12,10 @@ export type HudProps = {
   onCancel: () => void;
   onTalk: () => void;
   talking?: boolean;
+  hint?: string;
 };
 
-export function Hud({ state, onConfirm, onCancel, onTalk, talking = false }: HudProps) {
+export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint }: HudProps) {
   return (
     <div className="hud">
       <header className="hud-header">
@@ -35,7 +36,7 @@ export function Hud({ state, onConfirm, onCancel, onTalk, talking = false }: Hud
               <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
             </svg>
           </button>
-          <p className="hint">MANTÉM CTRL + ESPAÇO PARA FALAR</p>
+          <p className="hint">{hint ?? "MANTÉM CTRL + ESPAÇO PARA FALAR"}</p>
         </main>
         <div className="col-side">
           <EmailPanel />

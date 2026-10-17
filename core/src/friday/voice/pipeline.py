@@ -25,6 +25,13 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+from pipecat.turns.user_start.wake_phrase_user_turn_start_strategy import (
+    WakePhraseUserTurnStartStrategy,
+)
+from pipecat.turns.user_turn_strategies import (
+    UserTurnStrategies,
+    default_user_turn_start_strategies,
+)
 from pipecat.workers.runner import WorkerRunner
 
 from friday.config import Config
@@ -35,6 +42,7 @@ from friday.voice import events
 from friday.voice.processors import FridayBrain, ReplyTap, VoiceDeps
 from friday.voice.stt import FridayWhisperSTT
 from friday.voice.voices import ensure_piper_voice
+from friday.voice.wakeword import WakeGate
 
 __all__ = ["VoiceDeps", "run_voice_session", "tools_schema"]
 
@@ -88,12 +96,23 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
     tts_switcher = ServiceSwitcher(services=[tts["pt"], tts["en"]])
 
     context = LLMContext(tools=tools_schema(deps.registry))
-    aggregators = LLMContextAggregatorPair(
-        context, user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
-    )
+    user_params = LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
+    wake = None
+    if cfg.wake.enabled:
+        # Sempre à escuta: o Pipecat só abre um turno depois de ouvir "Friday".
+        wake = WakeGate(cfg.wake.phrases, cfg.wake.window_s)
+        user_params.user_turn_strategies = UserTurnStrategies(
+            start=[
+                WakePhraseUserTurnStartStrategy(
+                    phrases=cfg.wake.phrases, timeout=cfg.wake.window_s
+                ),
+                *default_user_turn_start_strategies(),
+            ]
+        )
+    aggregators = LLMContextAggregatorPair(context, user_params=user_params)
     watch = SlowResponseWatch(cfg.llm.slow_threshold_s)
     timer = TurnTimer()
-    brain = FridayBrain(cfg, deps, context=context, watch=watch, tts=tts, timer=timer)
+    brain = FridayBrain(cfg, deps, context=context, watch=watch, tts=tts, timer=timer, wake=wake)
     tap = ReplyTap(cfg, deps, watch, timer, current_lang=lambda: brain.lang)
 
     async def call_tool(params: FunctionCallParams) -> None:

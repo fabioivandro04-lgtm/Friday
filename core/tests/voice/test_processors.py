@@ -199,3 +199,28 @@ async def test_no_filler_after_llm_error(deps, tts, context):
     spoken = _spoken(down)
     assert "O modelo local não está a responder." in spoken
     assert "Deixa-me ver…" not in spoken
+
+
+async def test_wake_gate_closed_forwards_silently(deps, tts, context):
+    from friday.voice.wakeword import WakeGate
+
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
+    gate = WakeGate(["friday"], window_s=15.0)
+    brain = FridayBrain(
+        cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, wake=gate
+    )
+    down, _ = await run_test(brain, frames_to_send=[_tr("isto não é para ti, ok")])
+    assert _events(down) == []
+    assert deps.memory.turns == []
+
+
+async def test_wake_gate_open_on_phrase(deps, tts, context):
+    from friday.voice.wakeword import WakeGate
+
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
+    gate = WakeGate(["friday"], window_s=15.0)
+    brain = FridayBrain(
+        cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, wake=gate
+    )
+    down, _ = await run_test(brain, frames_to_send=[_tr("Friday, que horas são?")])
+    assert {"type": "state", "data": {"value": "thinking"}} in _events(down)

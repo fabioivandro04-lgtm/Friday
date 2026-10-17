@@ -33,3 +33,11 @@ port = 8765
 db_path = "friday.db"
 # Semelhança mínima para uma memória ser usada numa resposta (0–1).
 min_similarity = 0.35
+
+[wake]
+# Modo "sempre à escuta": a Friday só responde depois de ouvir o nome dela.
+# Desligado = falas com Ctrl+Espaço ou com o botão do microfone.
+enabled = false
+phrases = ["friday"]
+# Segundos em que continua a ouvir depois da última frase.
+window_s = 15.0
