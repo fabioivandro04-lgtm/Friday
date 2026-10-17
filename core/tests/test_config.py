@@ -65,3 +65,12 @@ def test_unknown_keys_are_warned(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="friday"):
         load_config(p, env={})
     assert "llm.local_modle" in caplog.text
+
+
+def test_integrations_defaults(tmp_path):
+    p = tmp_path / "friday.toml"
+    p.write_text('[tts]\nvoice_pt = "a"\nvoice_en = "b"\n')
+    i = load_config(p, env={}).integrations
+    assert i.timezone == "Europe/Lisbon"
+    assert i.secrets_dir == "secrets"
+    assert i.microsoft_client_id is None

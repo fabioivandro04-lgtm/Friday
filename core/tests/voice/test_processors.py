@@ -88,6 +88,7 @@ async def test_normal_turn_is_forwarded_with_prompt_and_events(brain, context, d
     assert {"type": "state", "data": {"value": "thinking"}} in events
     system = context.messages[0]
     assert system["role"] == "system" and "reuniões de manhã" in system["content"]
+    assert "Agora:" in system["content"]  # data e hora para "amanhã às 15h"
     assert deps.memory.turns == [("user", "que tempo faz hoje em Lisboa")]
 
 
@@ -292,3 +293,18 @@ async def test_filler_cancelled_when_user_speaks_again(deps, tts, context):
         ],
     )
     assert "Deixa-me ver…" not in _spoken(down)
+
+
+async def test_confirmed_action_triggers_after_action(deps, tts, context, sent):
+    calls = []
+
+    async def after():
+        calls.append(1)
+
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
+    brain = FridayBrain(
+        cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, after_action=after
+    )
+    deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
+    await run_test(brain, frames_to_send=[_tr("sim")])
+    assert sent == ["João"] and calls == [1]

@@ -2,12 +2,18 @@
 
 export type ReactorState = "listening" | "thinking" | "speaking" | "offline";
 
+export type AgendaItem = { time: string; title: string; location: string };
+export type InboxItem = { ref: string; sender: string; subject: string };
+export type Feed<T> = { connected: boolean; items: T[] };
+
 export type UiState = {
   reactor: ReactorState;
   lastUser?: string;
   lastAssistant?: string;
   pending?: { id: string; summary: string };
   system: { model?: string; voice?: string; latencyMs?: number; vramGb?: number; error?: string };
+  agenda?: Feed<AgendaItem>;
+  inbox?: Feed<InboxItem>;
 };
 
 export type CoreEvent = { type: string; data: any };
@@ -42,6 +48,10 @@ export function reduce(state: UiState, event: CoreEvent): UiState {
           error: d.error ?? undefined,
         },
       };
+    case "agenda":
+      return { ...state, agenda: { connected: !!d.connected, items: d.items ?? [] } };
+    case "inbox":
+      return { ...state, inbox: { connected: !!d.connected, items: d.items ?? [] } };
     default:
       return state;
   }

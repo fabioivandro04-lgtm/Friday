@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -29,6 +31,7 @@ from pipecat.services.llm_service import LLMService
 from pipecat.utils.errors import ErrorCategory
 
 from friday.config import Config
+from friday.integrations.hub import IntegrationHub
 from friday.llm.providers import SlowResponseWatch, filler_phrase
 from friday.memory.store import MemoryStore
 from friday.metrics import TurnTimer, vram_used_gb
@@ -79,6 +82,7 @@ class VoiceDeps:
     registry: ToolRegistry
     confirmations: ConfirmationManager
     memory: MemoryStore
+    hub: IntegrationHub | None = None
 
 
 class FridayBrain(FrameProcessor):
@@ -98,8 +102,11 @@ class FridayBrain(FrameProcessor):
         tts: dict[Lang, FrameProcessor],
         timer: TurnTimer | None = None,
         wake: WakeGate | None = None,
+        after_action: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__(name="FridayBrain")
+        self._after_action = after_action
+        self._tz = ZoneInfo(cfg.integrations.timezone)
         self._wake = wake
         self._timer = timer or TurnTimer()
         self._cfg = cfg
@@ -231,12 +238,15 @@ class FridayBrain(FrameProcessor):
         return True
 
     async def _run(self, action: PendingAction) -> str:
-        return await self._deps.registry.get(action.tool).handler(**action.args)
+        result = await self._deps.registry.get(action.tool).handler(**action.args)
+        if self._after_action:
+            await self._after_action()  # ex.: atualizar a agenda no HUD
+        return result
 
     async def _refresh_system_prompt(self, text: str) -> None:
         # Embeddings + SQLite numa thread, para não atrasar o áudio.
         memory = await asyncio.to_thread(self._deps.memory.context_for, text)
-        prompt = system_prompt(self.lang, memory)
+        prompt = system_prompt(self.lang, memory, now=datetime.now(self._tz))
         if self._cfg.llm.provider == "local" and self._cfg.llm.local_model.startswith("qwen3"):
             prompt += "\n/no_think"  # desliga o raciocínio do Qwen3 (mais rápido)
         others = [m for m in self._context.messages if m.get("role") != "system"]

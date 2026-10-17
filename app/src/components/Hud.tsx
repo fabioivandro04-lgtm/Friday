@@ -32,7 +32,7 @@ export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint,
       </header>
       <div className="hud-body">
         <div className="col-side">
-          <AgendaPanel />
+          <AgendaPanel feed={state.agenda} />
         </div>
         <main className="col-main">
           <Reactor state={state.reactor} />
@@ -47,7 +47,7 @@ export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint,
           <p className="hint">{hint ?? "MANTÉM CTRL + SHIFT + ESPAÇO PARA FALAR"}</p>
         </main>
         <div className="col-side">
-          <EmailPanel />
+          <EmailPanel feed={state.inbox} />
           <SystemPanel system={state.system} />
         </div>
       </div>

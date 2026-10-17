@@ -41,3 +41,12 @@ enabled = false
 phrases = ["friday"]
 # Segundos em que continua a ouvir depois da última frase.
 window_s = 15.0
+
+[integrations]
+timezone = "Europe/Lisbon"
+# Tokens e client_secret.json do Google ficam aqui (nunca vão para o Git).
+secrets_dir = "secrets"
+# Outlook / Microsoft 365: o "Application (client) ID" da tua app no Azure (ver README).
+# microsoft_client_id = "00000000-0000-0000-0000-000000000000"
+# Conta usada para enviar e marcar quando não dizes qual: "google" ou "microsoft".
+# default_provider = "google"

@@ -20,6 +20,8 @@ class Tool:
     mutating: bool = False
     # Texto do cartão de confirmação, a partir dos argumentos.
     summary: Callable[[dict[str, Any]], str] | None = None
+    # Valida os argumentos antes de pedir confirmação; devolve a mensagem de erro ou None.
+    validate: Callable[[dict[str, Any]], str | None] | None = None
 
 
 class ToolRegistry:
@@ -58,7 +60,12 @@ async def execute(
         tool = registry.get(name)
     except KeyError:
         return f"ERRO: ferramenta desconhecida: {name}"
+    if tool.validate and (problem := tool.validate(args)):
+        return f"ERRO: {problem}"
     if tool.mutating:
         action = confirmations.propose(tool, args)
         return f"PENDENTE: {action.summary}. Pergunta ao utilizador se confirma."
-    return await tool.handler(**args)
+    try:
+        return await tool.handler(**args)
+    except Exception as e:  # o LLM recebe o erro e explica-o em vez de a conversa parar
+        return f"ERRO: {e}"

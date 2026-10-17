@@ -62,3 +62,8 @@ button { font-family: inherit; }
 .header-right { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
 .link { background: none; border: none; padding: 8px 0; min-height: 44px; color: var(--muted); font-family: var(--font-data); font-size: 12px; letter-spacing: 0.08em; cursor: pointer; text-decoration: underline; }
 .link:hover { color: var(--text); }
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.list-row { display: flex; gap: 12px; align-items: baseline; font-size: 15px; }
+.list-time { min-width: 52px; font-size: 13px; }
+.list-mail { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+.list-sender { font-size: 12px; font-family: var(--font-data); }

@@ -47,3 +47,13 @@ test("evento system converte snake_case", () => {
 test("evento desconhecido não muda nada", () => {
   expect(reduce(initialState, { type: "xpto", data: {} })).toBe(initialState);
 });
+
+test("agenda e inbox vindos do Core", () => {
+  let s = reduce(initialState, {
+    type: "agenda",
+    data: { connected: true, items: [{ time: "10:00", title: "Reunião", location: "Escritório" }] },
+  });
+  s = reduce(s, { type: "inbox", data: { connected: true, items: [{ ref: "google:m1", sender: "João", subject: "Hora" }] } });
+  expect(s.agenda).toEqual({ connected: true, items: [{ time: "10:00", title: "Reunião", location: "Escritório" }] });
+  expect(s.inbox?.items[0].subject).toBe("Hora");
+});

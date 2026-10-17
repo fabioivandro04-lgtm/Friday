@@ -64,3 +64,30 @@ async def test_mutating_tool_requires_confirmation():
 async def test_unknown_tool_returns_error():
     out = await execute(ToolRegistry(), ConfirmationManager(), "nope", {})
     assert out.startswith("ERRO:")
+
+
+async def test_validate_rejects_before_proposing():
+    async def noop(**kw):
+        return "ok"
+
+    tool = Tool(
+        name="send",
+        description="",
+        parameters={},
+        handler=noop,
+        mutating=True,
+        validate=lambda args: None if "@" in args.get("to", "") else "email inválido",
+    )
+    reg, conf = ToolRegistry(), ConfirmationManager()
+    reg.register(tool)
+    assert await execute(reg, conf, "send", {"to": "x"}) == "ERRO: email inválido"
+    assert conf.pending() is None
+
+
+async def test_handler_exception_becomes_error_message():
+    async def boom(**kw):
+        raise RuntimeError("rede em baixo")
+
+    reg, conf = ToolRegistry(), ConfirmationManager()
+    reg.register(Tool(name="t", description="", parameters={}, handler=boom))
+    assert await execute(reg, conf, "t", {}) == "ERRO: rede em baixo"

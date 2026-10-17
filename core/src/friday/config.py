@@ -58,6 +58,16 @@ class WakeConfig:
 
 
 @dataclass(frozen=True)
+class IntegrationsConfig:
+    timezone: str = "Europe/Lisbon"
+    # Tokens do Google/Microsoft e o client_secret.json do Google (fora do Git).
+    secrets_dir: str = "secrets"
+    microsoft_client_id: str | None = None
+    # Conta usada para enviar/marcar quando não se diz qual: "google" ou "microsoft".
+    default_provider: str | None = None
+
+
+@dataclass(frozen=True)
 class Config:
     tts: TtsConfig
     stt: SttConfig = field(default_factory=SttConfig)
@@ -65,6 +75,7 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     wake: WakeConfig = field(default_factory=WakeConfig)
+    integrations: IntegrationsConfig = field(default_factory=IntegrationsConfig)
 
 
 logger = logging.getLogger("friday.config")
@@ -106,4 +117,7 @@ def load_config(path: Path, env: Mapping[str, str] = os.environ) -> Config:
         server=server,
         memory=MemoryConfig(**_section(MemoryConfig, raw.get("memory", {}), "memory")),
         wake=WakeConfig(**_section(WakeConfig, raw.get("wake", {}), "wake")),
+        integrations=IntegrationsConfig(
+            **_section(IntegrationsConfig, raw.get("integrations", {}), "integrations")
+        ),
     )

@@ -85,6 +85,34 @@ No telemóvel (com o Tailscale ligado), abre `https://<nome-do-pc>.<tailnet>.ts.
 cola o token que vês em `http://127.0.0.1:8765/pair` **no PC**, e adiciona a página
 ao ecrã inicial.
 
+## 4. Ligar o email e a agenda
+
+A Friday lê a agenda e os emails por ler, marca eventos e envia/responde a emails.
+Antes de marcar ou enviar, **pergunta sempre** ("Confirmas?") e mostra o cartão no HUD.
+
+### Google (Gmail + Google Calendar)
+
+1. Em <https://console.cloud.google.com>, cria um projeto e ativa a **Gmail API** e a
+   **Google Calendar API**.
+2. Em *APIs e serviços → Ecrã de consentimento OAuth*, escolhe "Externo" e adiciona o
+   teu email como utilizador de teste.
+3. Em *Credenciais → Criar credenciais → ID do cliente OAuth*, escolhe
+   **Aplicação para computador** e descarrega o JSON para `core/secrets/client_secret.json`.
+4. Corre `uv run python -m friday connect google` e faz login no browser.
+
+### Outlook / Microsoft 365
+
+1. Em <https://portal.azure.com> → *Microsoft Entra ID → Registos de aplicações → Novo registo*.
+   Tipos de conta: "contas em qualquer diretório e contas Microsoft pessoais".
+2. Em *Autenticação*, ativa **Permitir fluxos de clientes públicos**.
+3. Copia o *Application (client) ID* para `[integrations] microsoft_client_id` no `friday.toml`.
+4. Corre `uv run python -m friday connect microsoft` e segue o código que aparece.
+
+Reinicia o Core: os painéis Agenda e Email passam a mostrar os teus dados.
+
+Experimenta: "O que tenho amanhã?", "Tenho emails importantes?", "Marca café com o
+João amanhã às 15h", "Responde ao João a dizer que chego às três".
+
 ## Opções no `friday.toml`
 
 | Opção | Para quê |
@@ -93,6 +121,8 @@ ao ecrã inicial.
 | `[llm] provider = "cloud"` + `cloud_model` | Usar o OpenRouter; põe `OPENROUTER_API_KEY=` em `core/.env` |
 | `[wake] enabled = true` | Modo sempre à escuta com a palavra "Friday" |
 | `[stt] device = "cpu"` | Sem GPU (mais lento) |
+| `[integrations] timezone` | Fuso horário (padrão `Europe/Lisbon`) |
+| `[integrations] default_provider` | Conta para enviar/marcar: `google` ou `microsoft` |
 
 ## Medir a latência
 

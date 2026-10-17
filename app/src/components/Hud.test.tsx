@@ -29,6 +29,22 @@ test.each([
   expect(screen.getByText(label)).toBeInTheDocument();
 });
 
+test("agenda e email com dados", () => {
+  renderHud({
+    agenda: { connected: true, items: [{ time: "10:00", title: "Reunião de equipa", location: "Escritório" }] },
+    inbox: { connected: true, items: [{ ref: "google:m1", sender: "João", subject: "Confirmação" }] },
+  });
+  expect(screen.getByText("Reunião de equipa")).toBeInTheDocument();
+  expect(screen.getByText("10:00")).toBeInTheDocument();
+  expect(screen.getByText("Confirmação")).toBeInTheDocument();
+});
+
+test("contas ligadas mas vazias", () => {
+  renderHud({ agenda: { connected: true, items: [] }, inbox: { connected: true, items: [] } });
+  expect(screen.getByText("Nada marcado para hoje")).toBeInTheDocument();
+  expect(screen.getByText("Sem emails por ler")).toBeInTheDocument();
+});
+
 test("agenda e email ainda por ligar", () => {
   renderHud({});
   expect(screen.getAllByText("Por ligar")).toHaveLength(2);

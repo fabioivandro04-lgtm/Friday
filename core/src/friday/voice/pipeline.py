@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import WebSocket
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -36,6 +38,7 @@ from pipecat.turns.user_turn_strategies import (
 from pipecat.workers.runner import WorkerRunner
 
 from friday.config import Config
+from friday.integrations.panels import PanelFeeder
 from friday.llm.providers import SlowResponseWatch, select_endpoint
 from friday.metrics import TurnTimer
 from friday.tools.confirm import ConfirmationManager
@@ -133,7 +136,26 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
     aggregators = LLMContextAggregatorPair(context, user_params=user_params)
     watch = SlowResponseWatch(cfg.llm.slow_threshold_s)
     timer = TurnTimer()
-    brain = FridayBrain(cfg, deps, context=context, watch=watch, tts=tts, timer=timer, wake=wake)
+    tz = ZoneInfo(cfg.integrations.timezone)
+    feeder: PanelFeeder | None = None
+
+    async def refresh_panels() -> None:
+        if feeder:
+            await feeder.refresh()
+
+    brain = FridayBrain(
+        cfg,
+        deps,
+        context=context,
+        watch=watch,
+        tts=tts,
+        timer=timer,
+        wake=wake,
+        after_action=refresh_panels,
+    )
+    if deps.hub is not None:
+        feeder = PanelFeeder(deps.hub, brain.emit, now=lambda: datetime.now(tz))
+    panel_task: asyncio.Task | None = None
     tap = ReplyTap(cfg, deps, watch, timer, current_lang=lambda: brain.lang)
 
     async def call_tool(params: FunctionCallParams) -> None:
@@ -167,10 +189,15 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
     async def _on_connected(_transport, _client) -> None:
         await brain.emit(events.state("listening"))
         await brain.emit(events.system(endpoint.model, cfg.tts.voice_pt, None, None))
+        nonlocal panel_task
+        if feeder:
+            panel_task = asyncio.get_running_loop().create_task(feeder.run())
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client) -> None:
         deps.confirmations.cancel()
+        if panel_task:
+            panel_task.cancel()
         await task.cancel()
 
     holder = await _slot.claim(task.cancel)  # um novo dispositivo substitui o anterior
