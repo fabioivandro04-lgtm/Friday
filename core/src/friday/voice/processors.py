@@ -36,6 +36,7 @@ from friday.llm.providers import SlowResponseWatch, filler_phrase
 from friday.memory.store import MemoryStore
 from friday.metrics import TurnTimer, vram_used_gb
 from friday.persona import system_prompt
+from friday.proactive.scheduler import Announcer
 from friday.tools.confirm import (
     ConfirmationManager,
     PendingAction,
@@ -83,6 +84,7 @@ class VoiceDeps:
     confirmations: ConfirmationManager
     memory: MemoryStore
     hub: IntegrationHub | None = None
+    announcer: Announcer | None = None
 
 
 class FridayBrain(FrameProcessor):

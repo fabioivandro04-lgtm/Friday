@@ -113,6 +113,39 @@ Reinicia o Core: os painéis Agenda e Email passam a mostrar os teus dados.
 Experimenta: "O que tenho amanhã?", "Tenho emails importantes?", "Marca café com o
 João amanhã às 15h", "Responde ao João a dizer que chego às três".
 
+## 5. Telegram, lembretes e resumo da manhã
+
+**Telegram (grátis):**
+1. No Telegram, fala com o **@BotFather**, cria um bot (`/newbot`) e copia o token
+   para `TELEGRAM_BOT_TOKEN=` em `core/.env`.
+2. Em `friday.toml`, `[telegram] enabled = true`. Arranca o Core e manda "olá" ao teu bot:
+   ele responde com o teu **chat id**. Põe-no em `allowed_chat_id` e reinicia.
+3. Agora podes escrever ou mandar notas de voz à Friday — com as mesmas ferramentas
+   (agenda, email, pesquisa, lembretes) e as mesmas confirmações. Só o teu chat é atendido.
+
+**Lembretes:** "Lembra-me de ligar à mãe às 18h" ou "daqui a 20 minutos". Chegam no
+Telegram e, se estiveres a falar com a Friday, ela diz-tos em voz.
+
+**Resumo da manhã:** `[briefing] enabled = true` e a hora. Às 8h (por omissão, dias
+úteis) recebes agenda, emails por ler e o tempo. Se o PC estava desligado à hora
+marcada, o resumo só é enviado até 2 horas depois.
+
+## 6. Chamadas (opcional, Twilio)
+
+A Friday pode **ligar-te** (resumo da manhã por chamada, ou "liga-me") e conversar contigo
+ao telefone com o mesmo cérebro. Custa alguns cêntimos por minuto.
+
+1. Cria conta em <https://www.twilio.com>, compra um número com voz e copia o
+   *Account SID* para `[twilio] account_sid` e o *Auth Token* para `TWILIO_AUTH_TOKEN=`.
+2. Torna o Core acessível à Twilio (HTTPS público) com `tailscale funnel --bg 8765` e põe
+   o endereço `https://<nome-do-pc>.<tailnet>.ts.net` em `public_url`.
+3. `to_number` = o teu número. A Friday **só** liga para esse número.
+4. `[twilio] enabled = true`; para o resumo por chamada, `[briefing] channel = "call"`.
+
+Segurança: os pedidos da Twilio são validados pela assinatura `X-Twilio-Signature`
+e cada chamada usa um token de uso único. Com o Funnel ligado, o Core fica acessível
+da internet: o `/pair` continua só no PC, e o `/ws` exige o token de emparelhamento.
+
 ## Opções no `friday.toml`
 
 | Opção | Para quê |
@@ -123,6 +156,9 @@ João amanhã às 15h", "Responde ao João a dizer que chego às três".
 | `[stt] device = "cpu"` | Sem GPU (mais lento) |
 | `[integrations] timezone` | Fuso horário (padrão `Europe/Lisbon`) |
 | `[integrations] default_provider` | Conta para enviar/marcar: `google` ou `microsoft` |
+| `[telegram]` | Bot do Telegram (`enabled`, `allowed_chat_id`) |
+| `[briefing]` | Resumo da manhã (`enabled`, `time`, `weekdays_only`, `city`, `channel`) |
+| `[twilio]` | Chamadas (`enabled`, `account_sid`, `from_number`, `to_number`, `public_url`) |
 
 ## Medir a latência
 

@@ -50,3 +50,27 @@ secrets_dir = "secrets"
 # microsoft_client_id = "00000000-0000-0000-0000-000000000000"
 # Conta usada para enviar e marcar quando não dizes qual: "google" ou "microsoft".
 # default_provider = "google"
+
+[telegram]
+# Falar com a Friday por mensagem e receber lembretes/resumos.
+# Token do @BotFather em TELEGRAM_BOT_TOKEN (core/.env).
+enabled = false
+# Deixa vazio na 1.ª vez: manda uma mensagem ao bot e ele diz-te o teu chat id.
+# allowed_chat_id = 123456789
+
+[briefing]
+# Resumo da manhã (agenda + emails por ler + tempo).
+enabled = false
+time = "08:00"
+weekdays_only = true
+city = "Lisboa"
+# "telegram" ou "call" (a Friday liga-te; precisa do [twilio]).
+channel = "telegram"
+
+[twilio]
+# Opcional e pago: a Friday liga-te para o telemóvel. TWILIO_AUTH_TOKEN no core/.env.
+enabled = false
+# account_sid = "ACxxxxxxxxxxxxxxxx"
+# from_number = "+351210000000"   # número comprado na Twilio
+# to_number = "+3519xxxxxxxx"     # o TEU número (o único que a Friday pode ligar)
+# public_url = "https://<nome-do-pc>.<tailnet>.ts.net"   # tailscale funnel 8765

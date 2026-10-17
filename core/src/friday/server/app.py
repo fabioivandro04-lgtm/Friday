@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from friday.channels.twilio import TwilioGateway, twiml_stream, validate_signature
 from friday.config import Config
 from friday.server.auth import (
     TokenStore,
@@ -29,10 +33,25 @@ def _client_ip(conn: Request | WebSocket) -> str:
 
 
 def create_app(
-    cfg: Config, voice_handler: VoiceHandler | None = None, static_dir: Path | None = None
+    cfg: Config,
+    voice_handler: VoiceHandler | None = None,
+    static_dir: Path | None = None,
+    twilio: TwilioGateway | None = None,
+    background: list[Callable[[], Awaitable[None]]] | None = None,
 ) -> FastAPI:
     tokens = TokenStore(Path(cfg.memory.db_path).with_suffix(".token"), fixed=cfg.server.token)
-    app = FastAPI(title="Friday Core")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Telegram, agendador, …: correm enquanto o Core estiver ligado.
+        tasks = [asyncio.create_task(job()) for job in background or []]
+        try:
+            yield
+        finally:
+            for task in tasks:
+                task.cancel()
+
+    app = FastAPI(title="Friday Core", lifespan=lifespan)
 
     @app.middleware("http")
     async def only_allowed_ips(request: Request, call_next):
@@ -71,7 +90,40 @@ def create_app(
             return
         await voice_handler(websocket)
 
+    if twilio is not None:
+        _add_twilio_routes(app, twilio)
+
     if static_dir and Path(static_dir).is_dir():
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="pwa")
 
     return app
+
+
+def _add_twilio_routes(app: FastAPI, twilio: TwilioGateway) -> None:
+    @app.post("/twilio/voice")
+    async def twilio_voice(request: Request, t: str = ""):
+        form = {k: str(v) for k, v in (await request.form()).items()}
+        # A assinatura cobre o URL público exato que a Twilio chamou.
+        url = f"{twilio.cfg.public_url.rstrip('/')}{request.url.path}"
+        if request.url.query:
+            url += f"?{request.url.query}"
+        signature = request.headers.get("x-twilio-signature", "")
+        if not validate_signature(url, form, signature, twilio.cfg.auth_token or ""):
+            return JSONResponse({"detail": "bad signature"}, status_code=403)
+        if twilio.tokens.peek(t) is None:
+            return JSONResponse({"detail": "unknown call"}, status_code=403)
+        return Response(twiml_stream(twilio.ws_url(t)), media_type="application/xml")
+
+    @app.websocket("/twilio/ws")
+    async def twilio_ws(websocket: WebSocket, t: str = "") -> None:
+        data = twilio.tokens.consume(t)
+        if data is None:
+            await websocket.close(code=WS_UNAUTHORISED)
+            return
+        await websocket.accept()
+        start: dict = {}
+        while not start:  # "connected" e depois "start" com o streamSid
+            message = json.loads(await websocket.receive_text())
+            if message.get("event") == "start":
+                start = message.get("start", {})
+        await twilio.handler(websocket, start, data.get("greeting", ""))

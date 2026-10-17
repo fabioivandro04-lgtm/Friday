@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 
-from friday.__main__ import build_deps
+from friday.__main__ import build_services
 from friday.config import load_config
 from friday.server.app import create_app
 from friday.voice.pipeline import run_voice_session
@@ -24,7 +24,7 @@ CONFIG = Path(__file__).parents[2] / "friday.toml"
 @pytest.mark.gpu
 def test_spoken_question_gets_transcript_and_audio():
     cfg = load_config(CONFIG)
-    deps = build_deps(cfg)
+    deps = build_services(cfg).deps
 
     async def handler(ws):
         await run_voice_session(ws, cfg, deps)

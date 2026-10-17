@@ -68,6 +68,36 @@ class IntegrationsConfig:
 
 
 @dataclass(frozen=True)
+class TelegramConfig:
+    enabled: bool = False
+    # O teu chat id (o bot diz-to na primeira mensagem). Token: TELEGRAM_BOT_TOKEN no .env.
+    allowed_chat_id: int | None = None
+    token: str | None = None
+
+
+@dataclass(frozen=True)
+class BriefingConfig:
+    enabled: bool = False
+    time: str = "08:00"
+    weekdays_only: bool = True
+    city: str = "Lisboa"
+    # "telegram" ou "call" (chamada via Twilio).
+    channel: str = "telegram"
+
+
+@dataclass(frozen=True)
+class TwilioConfig:
+    enabled: bool = False
+    account_sid: str = ""
+    from_number: str = ""
+    # O teu número, em formato internacional (+351…). Só este número é chamado.
+    to_number: str = ""
+    # URL pública HTTPS do Core (Tailscale Funnel), ex.: https://pc.tail1234.ts.net
+    public_url: str = ""
+    auth_token: str | None = None
+
+
+@dataclass(frozen=True)
 class Config:
     tts: TtsConfig
     stt: SttConfig = field(default_factory=SttConfig)
@@ -76,12 +106,15 @@ class Config:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     wake: WakeConfig = field(default_factory=WakeConfig)
     integrations: IntegrationsConfig = field(default_factory=IntegrationsConfig)
+    telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    briefing: BriefingConfig = field(default_factory=BriefingConfig)
+    twilio: TwilioConfig = field(default_factory=TwilioConfig)
 
 
 logger = logging.getLogger("friday.config")
 
 # Segredos nunca vêm do TOML (que pode acabar no Git), só do ambiente / .env.
-_SECRET_KEYS = {"cloud_api_key", "token"}
+_SECRET_KEYS = {"cloud_api_key", "token", "auth_token"}
 
 
 def _section(cls: type, data: Mapping[str, Any], name: str = "") -> dict[str, Any]:
@@ -119,5 +152,14 @@ def load_config(path: Path, env: Mapping[str, str] = os.environ) -> Config:
         wake=WakeConfig(**_section(WakeConfig, raw.get("wake", {}), "wake")),
         integrations=IntegrationsConfig(
             **_section(IntegrationsConfig, raw.get("integrations", {}), "integrations")
+        ),
+        telegram=TelegramConfig(
+            **_section(TelegramConfig, raw.get("telegram", {}), "telegram"),
+            token=env.get("TELEGRAM_BOT_TOKEN") or None,
+        ),
+        briefing=BriefingConfig(**_section(BriefingConfig, raw.get("briefing", {}), "briefing")),
+        twilio=TwilioConfig(
+            **_section(TwilioConfig, raw.get("twilio", {}), "twilio"),
+            auth_token=env.get("TWILIO_AUTH_TOKEN") or None,
         ),
     )

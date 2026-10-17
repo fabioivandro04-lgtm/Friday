@@ -12,6 +12,7 @@ from fastapi import WebSocket
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.service_switcher import ServiceSwitcher
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -21,6 +22,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.piper.tts import PiperTTSService
@@ -74,17 +76,37 @@ _AUDIO_IDLE_TIMEOUT_S = 0.3
 _slot = SessionSlot()
 
 
-async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) -> None:
+def _serializer(cfg: Config, telephony: dict | None):
+    if telephony is None:
+        return ProtobufFrameSerializer()  # app e PWA (Pipecat client)
+    return TwilioFrameSerializer(  # chamada telefónica (áudio μ-law 8 kHz)
+        stream_sid=telephony["streamSid"],
+        call_sid=telephony.get("callSid"),
+        account_sid=cfg.twilio.account_sid,
+        auth_token=cfg.twilio.auth_token,
+    )
+
+
+async def run_voice_session(
+    websocket: WebSocket,
+    cfg: Config,
+    deps: VoiceDeps,
+    *,
+    telephony: dict | None = None,
+    greeting: str = "",
+) -> None:
+    """Uma conversa de voz: pela app (WebSocket) ou por chamada (Twilio, já aceite)."""
     # Cada sessão tem as suas ações pendentes (o PC não confirma o que o telemóvel pediu).
     deps = replace(deps, confirmations=ConfirmationManager())
-    await websocket.accept()
+    if telephony is None:
+        await websocket.accept()
     transport = FastAPIWebsocketTransport(
         websocket,
         FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            serializer=ProtobufFrameSerializer(),
+            serializer=_serializer(cfg, telephony),
         ),
     )
 
@@ -185,6 +207,10 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
     )
     task = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True), enable_rtvi=True)
 
+    async def speak(text: str) -> None:
+        # Avisos do agendador (lembretes) ditos em voz durante a conversa.
+        await brain.push_frame(TTSSpeakFrame(text, append_to_context=False))
+
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client) -> None:
         await brain.emit(events.state("listening"))
@@ -192,10 +218,16 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
         nonlocal panel_task
         if feeder:
             panel_task = asyncio.get_running_loop().create_task(feeder.run())
+        if deps.announcer:
+            deps.announcer.attach(speak)
+        if greeting:  # ex.: o resumo da manhã numa chamada
+            await brain.push_frame(TTSSpeakFrame(greeting))
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client) -> None:
         deps.confirmations.cancel()
+        if deps.announcer:
+            deps.announcer.detach(speak)
         if panel_task:
             panel_task.cancel()
         await task.cancel()
