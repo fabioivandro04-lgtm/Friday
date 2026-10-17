@@ -1,0 +1,13 @@
+core/.env
+core/.venv/
+core/models/
+core/friday.toml
+*.db
+*.token
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+app/dist/
+app/src-tauri/target/
+.superpowers/
