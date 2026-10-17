@@ -9,7 +9,8 @@ const LOCAL_CORE = "http://127.0.0.1:8765";
 function defaultCoreUrl(origin: string): string {
   // Servida pelo Core (PC ou telemóvel via Tailscale): o Core é a própria origem.
   // No Tauri ou no `npm run dev`, o Core está neste PC.
-  if (origin.startsWith("tauri:") || /^https?:\/\/localhost:5173$/.test(origin)) return LOCAL_CORE;
+  // Tauri: tauri://localhost (Mac/Linux) ou http://tauri.localhost (Windows).
+  if (origin.startsWith("tauri:") || /^https?:\/\/(tauri\.localhost|localhost:5173)$/.test(origin)) return LOCAL_CORE;
   return origin.startsWith("http") ? origin : LOCAL_CORE;
 }
 
@@ -28,5 +29,18 @@ export function saveSettings(s: Settings): void {
     localStorage.setItem(KEY, JSON.stringify(s));
   } catch {
     // Sem armazenamento (modo privado): fica só para esta sessão.
+  }
+}
+
+// Aceita "100.64.1.2:8765" ou "pc.tail.ts.net"; devolve null se não for um endereço.
+export function normaliseCoreUrl(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(/^[a-z]+:\/\//i.test(raw) ? raw : `http://${raw}`);
+    if (!["http:", "https:"].includes(u.protocol) || !u.hostname) return null;
+    return u.origin;
+  } catch {
+    return null;
   }
 }

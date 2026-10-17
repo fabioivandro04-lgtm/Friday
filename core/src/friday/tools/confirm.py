@@ -14,9 +14,23 @@ from friday.tools.registry import Tool
 
 Resolution = Literal["confirmed", "rejected", "unclear"]
 
-_UNCLEAR = {"nao sei", "talvez", "nao tenho a certeza", "maybe", "not sure", "i dont know"}
+# Hesitações: perguntar outra vez faz sentido.
+_HEDGES = (
+    "nao sei",
+    "talvez",
+    "espera",
+    "nao tenho a certeza",
+    "maybe",
+    "not sure",
+    "wait",
+    "actually",
+    "hold on",
+    "i dont know",
+)
 _REJECT = {"nao", "cancela", "cancelar", "para", "no", "nope", "cancel", "stop"}
-_CONFIRM = {"sim", "confirmo", "confirma", "envia", "podes", "pode", "claro", "yes", "ok", "go"}
+# Só uma resposta curta que COMEÇA por uma destas conta como "sim".
+_CONFIRM_START = {"sim", "confirmo", "confirma", "envia", "claro", "yes", "yep", "ok", "okay"}
+_MAX_CONFIRM_WORDS = 4
 
 
 def _normalise(text: str) -> str:
@@ -25,14 +39,20 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z ]+", " ", text).strip()
 
 
+def is_hedge(answer: str) -> bool:
+    norm = _normalise(answer)
+    return any(re.search(rf"\b{h}\b", norm) for h in _HEDGES)
+
+
 def parse_confirmation(answer: str) -> Resolution:
     norm = _normalise(answer)
-    if not norm or any(phrase in norm for phrase in _UNCLEAR):
+    words = norm.split()
+    # Uma pergunta ("Podes repetir?", "Sim?") ou hesitação nunca é um "sim".
+    if not words or "?" in answer or is_hedge(answer):
         return "unclear"
-    words = set(norm.split())
-    if words & _REJECT:
+    if words[0] in _REJECT or {"cancela", "cancelar", "cancel", "stop"} & set(words):
         return "rejected"
-    if words & _CONFIRM:
+    if words[0] in _CONFIRM_START and len(words) <= _MAX_CONFIRM_WORDS:
         return "confirmed"
     return "unclear"
 
@@ -53,6 +73,7 @@ class ConfirmationManager:
         self._ttl_s = ttl_s
         self._clock = clock
         self._pending: PendingAction | None = None
+        self._expired_id: str | None = None
 
     def propose(self, tool: Tool, args: dict[str, Any]) -> PendingAction:
         summary = tool.summary(args) if tool.summary else f"Executar {tool.name}"
@@ -67,8 +88,15 @@ class ConfirmationManager:
 
     def pending(self) -> PendingAction | None:
         if self._pending and self._clock() - self._pending.created_at > self._ttl_s:
+            self._expired_id = self._pending.id
             self._pending = None
         return self._pending
+
+    def take_expired(self) -> str | None:
+        """Id da ação que expirou desde a última chamada (para tirar o cartão do ecrã)."""
+        self.pending()
+        expired, self._expired_id = self._expired_id, None
+        return expired
 
     def resolve(self, answer: str) -> Resolution:
         """Interpreta a resposta falada; limpa a ação se confirmada ou rejeitada.

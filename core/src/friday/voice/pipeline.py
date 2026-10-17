@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import WebSocket
@@ -37,9 +38,11 @@ from pipecat.workers.runner import WorkerRunner
 from friday.config import Config
 from friday.llm.providers import SlowResponseWatch, select_endpoint
 from friday.metrics import TurnTimer
+from friday.tools.confirm import ConfirmationManager
 from friday.tools.registry import ToolRegistry, execute
 from friday.voice import events
 from friday.voice.processors import FridayBrain, ReplyTap, VoiceDeps
+from friday.voice.session import SessionSlot
 from friday.voice.stt import FridayWhisperSTT
 from friday.voice.voices import ensure_piper_voice
 from friday.voice.wakeword import WakeGate
@@ -63,7 +66,14 @@ def tools_schema(registry: ToolRegistry) -> ToolsSchema:
     return ToolsSchema(standard_tools=schemas)
 
 
+# Push-to-talk: ao soltar a tecla o áudio para; fechar o turno depressa (padrão 1 s).
+_AUDIO_IDLE_TIMEOUT_S = 0.3
+_slot = SessionSlot()
+
+
 async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) -> None:
+    # Cada sessão tem as suas ações pendentes (o PC não confirma o que o telemóvel pediu).
+    deps = replace(deps, confirmations=ConfirmationManager())
     await websocket.accept()
     transport = FastAPIWebsocketTransport(
         websocket,
@@ -75,7 +85,8 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
         ),
     )
 
-    stt = FridayWhisperSTT(model=cfg.stt.model, device=cfg.stt.device)
+    # Carregar modelos bloqueia: fora do event loop, para não congelar o servidor.
+    stt = await asyncio.to_thread(FridayWhisperSTT, model=cfg.stt.model, device=cfg.stt.device)
 
     endpoint = select_endpoint(cfg.llm)
     llm = OpenAILLMService(
@@ -90,24 +101,34 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
     for voice_id in (cfg.tts.voice_pt, cfg.tts.voice_en):
         await asyncio.to_thread(ensure_piper_voice, voice_id, download_dir)
     tts = {
-        "pt": PiperTTSService(voice_id=cfg.tts.voice_pt, download_dir=download_dir),
-        "en": PiperTTSService(voice_id=cfg.tts.voice_en, download_dir=download_dir),
+        lang: await asyncio.to_thread(PiperTTSService, voice_id=voice, download_dir=download_dir)
+        for lang, voice in (("pt", cfg.tts.voice_pt), ("en", cfg.tts.voice_en))
     }
     tts_switcher = ServiceSwitcher(services=[tts["pt"], tts["en"]])
 
     context = LLMContext(tools=tools_schema(deps.registry))
-    user_params = LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
+    user_params = LLMUserAggregatorParams(
+        vad_analyzer=SileroVADAnalyzer(), audio_idle_timeout=_AUDIO_IDLE_TIMEOUT_S
+    )
     wake = None
     if cfg.wake.enabled:
-        # Sempre à escuta: o Pipecat só abre um turno depois de ouvir "Friday".
-        wake = WakeGate(cfg.wake.phrases, cfg.wake.window_s)
+        # Sempre à escuta: o Pipecat só abre um turno depois de ouvir "Friday",
+        # e é ele que diz ao cérebro quando está acordado (uma só fonte de verdade).
+        wake = WakeGate(cfg.wake.phrases)
+        strategy = WakePhraseUserTurnStartStrategy(
+            phrases=cfg.wake.phrases, timeout=cfg.wake.window_s
+        )
+
+        @strategy.event_handler("on_wake_phrase_detected")
+        async def _on_wake(_strategy, _phrase) -> None:
+            wake.set_awake(True)
+
+        @strategy.event_handler("on_wake_phrase_timeout")
+        async def _on_sleep(_strategy) -> None:
+            wake.set_awake(False)
+
         user_params.user_turn_strategies = UserTurnStrategies(
-            start=[
-                WakePhraseUserTurnStartStrategy(
-                    phrases=cfg.wake.phrases, timeout=cfg.wake.window_s
-                ),
-                *default_user_turn_start_strategies(),
-            ]
+            start=[strategy, *default_user_turn_start_strategies()]
         )
     aggregators = LLMContextAggregatorPair(context, user_params=user_params)
     watch = SlowResponseWatch(cfg.llm.slow_threshold_s)
@@ -152,4 +173,8 @@ async def run_voice_session(websocket: WebSocket, cfg: Config, deps: VoiceDeps) 
         deps.confirmations.cancel()
         await task.cancel()
 
-    await WorkerRunner(handle_sigint=False).run(task)
+    holder = await _slot.claim(task.cancel)  # um novo dispositivo substitui o anterior
+    try:
+        await WorkerRunner(handle_sigint=False).run(task)
+    finally:
+        _slot.release(holder)

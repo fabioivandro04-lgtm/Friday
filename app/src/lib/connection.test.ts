@@ -43,6 +43,30 @@ test("espera cresce e tem limite", () => {
   expect([0, 1, 2, 10].map(backoffDelay)).toEqual([500, 1000, 2000, 10000]);
 });
 
+test("sessão que cai antes de ficar pronta não reinicia a espera", async () => {
+  const { conn, client } = setup();
+  await conn.connect(); // ligou, mas o Core nunca mandou "state" (ex.: falhou a carregar o Whisper)
+  client().cb.onDisconnected();
+  await vi.advanceTimersByTimeAsync(500);
+  client().cb.onDisconnected();
+  await vi.advanceTimersByTimeAsync(999);
+  expect(client().connects).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(client().connects).toHaveLength(3);
+});
+
+test("o primeiro estado do Core reinicia a espera", async () => {
+  const { conn, client } = setup();
+  await conn.connect();
+  client().cb.onDisconnected();
+  await vi.advanceTimersByTimeAsync(500);
+  client().cb.onServerMessage({ type: "state", data: { value: "listening" } });
+  client().cb.onDisconnected();
+  expect(vi.getTimerCount()).toBe(1);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(client().connects).toHaveLength(3);
+});
+
 test("URL do WebSocket a partir da página e do token", () => {
   expect(wsUrlFor("https://pc.tail.ts.net", "a b")).toBe("wss://pc.tail.ts.net/ws?token=a%20b");
   expect(wsUrlFor("http://127.0.0.1:8765/", "t")).toBe("ws://127.0.0.1:8765/ws?token=t");

@@ -3,7 +3,7 @@ from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
-    UserStoppedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
@@ -70,11 +70,12 @@ async def test_bot_speaking_sends_state_and_latency():
     assert system["data"]["model"] == "qwen3:8b"
 
 
-async def test_user_stopped_speaking_marks_speech_end():
+async def test_vad_stop_marks_speech_end():
     t = [1.0]
     timer = TurnTimer(clock=lambda: t[0])
     tap, _ = _tap(timer=timer)
-    await run_test(tap, frames_to_send=[UserStoppedSpeakingFrame()])
+    # O fim real da fala (VAD), não o fim do turno, que já inclui o STT.
+    await run_test(tap, frames_to_send=[VADUserStoppedSpeakingFrame()])
     t[0] = 1.5
     timer.mark("stt_done")
     assert timer.report() == {"stt_done": 500}

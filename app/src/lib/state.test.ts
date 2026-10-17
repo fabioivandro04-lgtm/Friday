@@ -13,8 +13,13 @@ test("ligação perdida volta a offline", () => {
   expect(s.reactor).toBe("offline");
 });
 
-test("ligação estabelecida fica a ouvir", () => {
-  expect(reduce(initialState, { type: "connection", data: { connected: true } }).reactor).toBe("listening");
+test("ligação aberta não finge que já está a ouvir (o Core avisa quando estiver pronto)", () => {
+  expect(reduce(initialState, { type: "connection", data: { connected: true } }).reactor).toBe("offline");
+});
+
+test("perder a ligação tira o cartão de confirmação", () => {
+  const s = reduce(initialState, { type: "confirm_request", data: { id: "a", summary: "x" } });
+  expect(reduce(s, { type: "connection", data: { connected: false } }).pending).toBeUndefined();
 });
 
 test("transcrições guardam a última frase de cada lado", () => {

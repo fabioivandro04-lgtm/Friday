@@ -10,7 +10,13 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from friday.config import Config
-from friday.server.auth import TokenStore, is_allowed_ip, is_localhost
+from friday.server.auth import (
+    TokenStore,
+    is_allowed_host,
+    is_allowed_ip,
+    is_allowed_origin,
+    is_localhost,
+)
 
 VoiceHandler = Callable[[WebSocket], Awaitable[None]]
 WS_UNAUTHORISED = 4401
@@ -32,6 +38,8 @@ def create_app(
     async def only_allowed_ips(request: Request, call_next):
         if not is_allowed_ip(_client_ip(request)):
             return JSONResponse({"detail": "forbidden"}, status_code=403)
+        if not is_allowed_host(request.headers.get("host", "")):
+            return JSONResponse({"detail": "bad host"}, status_code=400)
         return await call_next(request)
 
     @app.get("/health")
@@ -48,7 +56,14 @@ def create_app(
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket, token: str = "") -> None:
-        if not (is_allowed_ip(_client_ip(websocket)) and token and tokens.check(token)):
+        allowed = (
+            is_allowed_ip(_client_ip(websocket))
+            and is_allowed_host(websocket.headers.get("host", ""))
+            and is_allowed_origin(websocket.headers.get("origin"))
+            and token
+            and tokens.check(token)
+        )
+        if not allowed:
             await websocket.close(code=WS_UNAUTHORISED)
             return
         if voice_handler is None:

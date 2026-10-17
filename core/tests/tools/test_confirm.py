@@ -25,6 +25,15 @@ SEND = Tool(name="send", description="", parameters={}, handler=_noop, mutating=
         ("não sei", "unclear"),
         ("", "unclear"),
         ("o tempo amanhã", "unclear"),
+        ("ok", "confirmed"),
+        ("Sim, envia por favor", "confirmed"),
+        # Não-respostas que antes contavam como "sim" (revisão final):
+        ("Podes repetir?", "unclear"),
+        ("Ok, espera um momento", "unclear"),
+        ("Pode ser, mas espera", "unclear"),
+        ("Go ahead... actually wait", "unclear"),
+        ("Sim?", "unclear"),
+        ("sim mas primeiro diz-me a quem é que vais enviar isso", "unclear"),
     ],
 )
 def test_parse_confirmation(answer, expected):
@@ -69,3 +78,20 @@ def test_new_proposal_replaces_old():
     conf.propose(SEND, {"n": 2})
     assert conf.confirm_by_id(first.id) is None
     assert conf.pending().args == {"n": 2}
+
+
+def test_is_hedge():
+    from friday.tools.confirm import is_hedge
+
+    assert is_hedge("talvez") and is_hedge("não sei") and is_hedge("espera")
+    assert not is_hedge("qual é o tempo amanhã?")
+
+
+def test_expired_action_is_reported_once():
+    t = [0.0]
+    conf = ConfirmationManager(ttl_s=60, clock=lambda: t[0])
+    action = conf.propose(SEND, {})
+    t[0] = 61
+    assert conf.pending() is None
+    assert conf.take_expired() == action.id
+    assert conf.take_expired() is None

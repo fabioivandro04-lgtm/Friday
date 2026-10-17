@@ -48,3 +48,31 @@ class TokenStore:
 
     def check(self, token: str) -> bool:
         return hmac.compare_digest(token.encode(), self.get_or_create().encode())
+
+
+# Nomes por que o Core pode ser chamado. Outro nome no cabeçalho Host indica
+# DNS rebinding (um site a fingir ser 127.0.0.1) e é recusado.
+_LOCAL_NAMES = {"localhost", "127.0.0.1", "::1", "testserver"}
+_APP_ORIGINS = {"tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"}
+
+
+def _hostname(value: str) -> str:
+    value = value.strip().lower()
+    if value.startswith("["):  # [::1]:8765
+        return value[1 : value.find("]")]
+    return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+
+def is_allowed_host(host_header: str) -> bool:
+    name = _hostname(host_header)
+    return name in _LOCAL_NAMES or name.endswith(".ts.net") or is_allowed_ip(name)
+
+
+def is_allowed_origin(origin: str | None) -> bool:
+    if not origin:  # clientes que não são browsers (testes, script de medição)
+        return True
+    origin = origin.strip().lower()
+    if origin in _APP_ORIGINS:
+        return True
+    scheme, _, rest = origin.partition("://")
+    return scheme in ("http", "https") and is_allowed_host(rest)

@@ -59,3 +59,6 @@ button { font-family: inherit; }
 .pairing code { color: var(--accent); }
 .pairing .check { flex-direction: row; align-items: center; gap: 10px; }
 .pairing .check input { min-height: 20px; width: 20px; }
+.header-right { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.link { background: none; border: none; padding: 8px 0; min-height: 44px; color: var(--muted); font-family: var(--font-data); font-size: 12px; letter-spacing: 0.08em; cursor: pointer; text-decoration: underline; }
+.link:hover { color: var(--text); }

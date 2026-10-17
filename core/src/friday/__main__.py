@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 from pathlib import Path
 
 import uvicorn
 
 from friday.config import Config, load_config
+from friday.envfile import read_env_file
 from friday.memory.store import FastEmbedder, MemoryStore
 from friday.memory.tools import make_memory_tools
 from friday.server.app import create_app
@@ -33,7 +36,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="friday")
     parser.add_argument("--config", type=Path, default=Path("friday.toml"))
     args = parser.parse_args()
-    cfg = load_config(args.config)
+    logging.basicConfig(level=logging.INFO)
+    # core/.env (chaves) ao lado do friday.toml; variáveis já definidas têm prioridade.
+    env = {**read_env_file(args.config.parent / ".env"), **os.environ}
+    cfg = load_config(args.config, env=env)
     from friday.voice.pipeline import run_voice_session
 
     deps = build_deps(cfg)

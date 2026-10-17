@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from typing import Any, Literal
 from friday.config import LlmConfig
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
+logger = logging.getLogger("friday.llm")
 _FILLERS = {"pt": "Deixa-me ver…", "en": "Let me check…"}
 
 
@@ -38,6 +40,11 @@ def cloud_endpoint(cfg: LlmConfig) -> LlmEndpoint | None:
 
 def select_endpoint(cfg: LlmConfig) -> LlmEndpoint:
     cloud = cloud_endpoint(cfg) if cfg.provider == "cloud" else None
+    if cfg.provider == "cloud" and cloud is None:
+        logger.warning(
+            'provider = "cloud" mas falta OPENROUTER_API_KEY (core/.env) ou cloud_model; '
+            "a usar o modelo local."
+        )
     return cloud or local_endpoint(cfg)
 
 

@@ -13,14 +13,22 @@ export type HudProps = {
   onTalk: () => void;
   talking?: boolean;
   hint?: string;
+  onRepair?: () => void;
 };
 
-export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint }: HudProps) {
+export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint, onRepair }: HudProps) {
   return (
     <div className="hud">
       <header className="hud-header">
         <div className="brand">F.R.I.D.A.Y.</div>
-        <div className="muted data">PT-PT · EN</div>
+        <div className="header-right">
+          <span className="muted data">PT-PT · EN</span>
+          {onRepair && (
+            <button type="button" className="link" onClick={onRepair}>
+              Emparelhar de novo
+            </button>
+          )}
+        </div>
       </header>
       <div className="hud-body">
         <div className="col-side">

@@ -79,3 +79,41 @@ def test_pair_refused_through_a_proxy(cfg, header):
     # Via `tailscale serve` o pedido chega de 127.0.0.1, mas vem de outro dispositivo.
     resp = _client(create_app(cfg)).get("/pair", headers={header: "100.101.5.9"})
     assert resp.status_code == 403
+
+
+@pytest.mark.parametrize("host", ["evil.example.com", "evil.example.com:8765"])
+def test_unknown_host_header_rejected(cfg, host):
+    # Defesa contra DNS rebinding: o /pair não pode ser lido por outro site.
+    assert _client(create_app(cfg)).get("/pair", headers={"host": host}).status_code == 400
+
+
+@pytest.mark.parametrize(
+    "host", ["127.0.0.1:8765", "localhost:8765", "pc.tail1234.ts.net", "100.101.5.9:8765"]
+)
+def test_known_hosts_allowed(cfg, host):
+    assert _client(create_app(cfg)).get("/health", headers={"host": host}).status_code == 200
+
+
+def test_ws_rejects_foreign_origin(cfg):
+    app = create_app(cfg, voice_handler=lambda ws: ws.accept())
+    token = _client(app).get("/pair").json()["token"]
+    with pytest.raises(WebSocketDisconnect) as e:
+        with _client(app).websocket_connect(
+            f"/ws?token={token}", headers={"origin": "https://evil.example.com"}
+        ):
+            pass
+    assert e.value.code == 4401
+
+
+@pytest.mark.parametrize(
+    "origin", ["tauri://localhost", "http://tauri.localhost", "http://127.0.0.1:8765"]
+)
+def test_ws_accepts_app_origins(cfg, origin):
+    async def handler(ws):
+        await ws.accept()
+        await ws.close()
+
+    app = create_app(cfg, voice_handler=handler)
+    token = _client(app).get("/pair").json()["token"]
+    with _client(app).websocket_connect(f"/ws?token={token}", headers={"origin": origin}):
+        pass

@@ -45,12 +45,14 @@ export class FridayConnection {
 
   constructor(private opts: Options) {
     this.client = opts.createClient({
-      onConnected: () => {
-        this.attempt = 0;
-        opts.onEvent({ type: "connection", data: { connected: true } });
-      },
+      onConnected: () => opts.onEvent({ type: "connection", data: { connected: true } }),
       onDisconnected: () => this.handleDrop(),
-      onServerMessage: (data) => opts.onEvent(data),
+      onServerMessage: (data) => {
+        // Só quando o Core diz que está pronto é que a ligação conta como boa;
+        // uma sessão que cai logo a seguir (ex.: falta CUDA) continua a esperar mais.
+        if (data?.type === "state") this.attempt = 0;
+        opts.onEvent(data);
+      },
     });
   }
 

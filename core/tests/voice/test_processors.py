@@ -205,7 +205,7 @@ async def test_wake_gate_closed_forwards_silently(deps, tts, context):
     from friday.voice.wakeword import WakeGate
 
     cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
-    gate = WakeGate(["friday"], window_s=15.0)
+    gate = WakeGate(["friday"])
     brain = FridayBrain(
         cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, wake=gate
     )
@@ -218,9 +218,50 @@ async def test_wake_gate_open_on_phrase(deps, tts, context):
     from friday.voice.wakeword import WakeGate
 
     cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
-    gate = WakeGate(["friday"], window_s=15.0)
+    gate = WakeGate(["friday"])
     brain = FridayBrain(
         cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, wake=gate
     )
     down, _ = await run_test(brain, frames_to_send=[_tr("Friday, que horas são?")])
+    assert {"type": "state", "data": {"value": "thinking"}} in _events(down)
+
+
+async def test_something_else_cancels_pending_and_is_answered(brain, deps, sent):
+    action = deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
+    down, _ = await run_test(brain, frames_to_send=[_tr("qual é o tempo amanhã em Lisboa")])
+    assert sent == [] and deps.confirmations.pending() is None
+    assert {"type": "confirm_cleared", "data": {"id": action.id}} in _events(down)
+    assert "Confirmas? Diz sim ou não." not in _spoken(down)
+    assert any(isinstance(f, TranscriptionFrame) for f in down)
+
+
+async def test_second_hedge_cancels(brain, deps, sent):
+    deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
+    down, _ = await run_test(brain, frames_to_send=[_tr("talvez"), _tr("não sei")])
+    assert sent == [] and deps.confirmations.pending() is None
+    assert _spoken(down).count("Confirmas? Diz sim ou não.") == 1
+
+
+async def test_expired_action_clears_card_on_next_turn(deps, tts, context, sent):
+    t = [0.0]
+    deps.confirmations = ConfirmationManager(ttl_s=60, clock=lambda: t[0])
+    action = deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
+    t[0] = 61
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
+    brain = FridayBrain(cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts)
+    down, _ = await run_test(brain, frames_to_send=[_tr("sim, envia já isso")])
+    assert sent == []
+    assert {"type": "confirm_cleared", "data": {"id": action.id}} in _events(down)
+
+
+async def test_wake_awake_from_pipecat_processes_follow_up(deps, tts, context):
+    from friday.voice.wakeword import WakeGate
+
+    cfg = Config(tts=TtsConfig("pt_PT-x", "en_GB-x"))
+    gate = WakeGate(["friday"])
+    gate.set_awake(True)  # o Pipecat ainda está acordado (a Friday falou há pouco)
+    brain = FridayBrain(
+        cfg, deps, context=context, watch=SlowResponseWatch(99.0), tts=tts, wake=gate
+    )
+    down, _ = await run_test(brain, frames_to_send=[_tr("e depois o que aconteceu")])
     assert {"type": "state", "data": {"value": "thinking"}} in _events(down)

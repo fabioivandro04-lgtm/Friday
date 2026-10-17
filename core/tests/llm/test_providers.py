@@ -73,3 +73,11 @@ def test_select_endpoint_cloud_when_chosen():
 
 def test_select_endpoint_falls_back_to_local_without_key():
     assert select_endpoint(LlmConfig(provider="cloud", cloud_model="a/b")).model == "qwen3:8b"
+
+
+def test_select_endpoint_warns_when_cloud_without_key(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="friday"):
+        select_endpoint(LlmConfig(provider="cloud", cloud_model="a/b"))
+    assert "OPENROUTER_API_KEY" in caplog.text

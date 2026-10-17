@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from
 import { Hud } from "./components/Hud";
 import { createPipecatClient, FridayConnection, wsUrlFor, type ClientCallbacks, type PipecatLike } from "./lib/connection";
 import { createPushToTalk } from "./lib/ptt";
-import { loadSettings, saveSettings, type Settings } from "./lib/settings";
+import { loadSettings, normaliseCoreUrl, saveSettings, type Settings } from "./lib/settings";
 import { initialState, reduce } from "./lib/state";
 import { registerGlobalShortcut } from "./lib/tauri";
 
@@ -10,20 +10,29 @@ type Props = { createClient?: (cb: ClientCallbacks) => PipecatLike };
 
 export function App({ createClient = createPipecatClient }: Props) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
+  const save = (s: Settings) => {
+    saveSettings(s);
+    setSettings(s);
+  };
   return settings.token ? (
-    <Connected settings={settings} createClient={createClient} />
+    <Connected settings={settings} createClient={createClient} onRepair={() => save({ ...settings, token: "" })} />
   ) : (
     <Pairing
       initial={settings}
-      onDone={(s) => {
-        saveSettings(s);
-        setSettings(s);
-      }}
+      onDone={save}
     />
   );
 }
 
-function Connected({ settings, createClient }: { settings: Settings; createClient: Props["createClient"] & {} }) {
+function Connected({
+  settings,
+  createClient,
+  onRepair,
+}: {
+  settings: Settings;
+  createClient: Props["createClient"] & {};
+  onRepair: () => void;
+}) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const connRef = useRef<FridayConnection | null>(null);
   const ptt = useMemo(() => createPushToTalk((on) => connRef.current?.setMicEnabled(on)), []);
@@ -68,6 +77,7 @@ function Connected({ settings, createClient }: { settings: Settings; createClien
       }}
       talking={talking || !!settings.alwaysListening}
       hint={settings.alwaysListening ? "DIZ “FRIDAY” PARA FALARES" : undefined}
+      onRepair={onRepair}
     />
   );
 }
@@ -76,10 +86,13 @@ function Pairing({ initial, onDone }: { initial: Settings; onDone: (s: Settings)
   const [coreUrl, setCoreUrl] = useState(initial.coreUrl);
   const [token, setToken] = useState("");
   const [alwaysListening, setAlwaysListening] = useState(!!initial.alwaysListening);
+  const [error, setError] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (coreUrl.trim() && token.trim())
-      onDone({ coreUrl: coreUrl.trim(), token: token.trim(), alwaysListening });
+    const url = normaliseCoreUrl(coreUrl);
+    if (!url) return setError("Endereço inválido. Exemplo: http://127.0.0.1:8765");
+    if (!token.trim()) return setError("Falta o token.");
+    onDone({ coreUrl: url, token: token.trim(), alwaysListening });
   };
   return (
     <form className="pairing" onSubmit={submit}>
@@ -99,6 +112,11 @@ function Pairing({ initial, onDone }: { initial: Settings; onDone: (s: Settings)
         <input type="checkbox" checked={alwaysListening} onChange={(e) => setAlwaysListening(e.target.checked)} />
         Sempre à escuta (diz “Friday”; ativa [wake] no friday.toml)
       </label>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <button type="submit" className="btn btn-primary">
         Ligar
       </button>

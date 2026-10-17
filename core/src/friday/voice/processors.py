@@ -20,7 +20,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
-    UserStoppedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -31,7 +31,12 @@ from friday.llm.providers import SlowResponseWatch, filler_phrase
 from friday.memory.store import MemoryStore
 from friday.metrics import TurnTimer, vram_used_gb
 from friday.persona import system_prompt
-from friday.tools.confirm import ConfirmationManager, PendingAction
+from friday.tools.confirm import (
+    ConfirmationManager,
+    PendingAction,
+    is_hedge,
+    parse_confirmation,
+)
 from friday.tools.registry import ToolRegistry
 from friday.voice import events
 from friday.voice.language import Lang, choose_language
@@ -95,6 +100,7 @@ class FridayBrain(FrameProcessor):
         self.lang: Lang = "pt"
         self._bot_speaking = False
         self._filler_task: asyncio.Task | None = None
+        self._asked_again: str | None = None
 
     async def emit(self, event: dict[str, Any]) -> None:
         await self.push_frame(RTVIServerMessageFrame(data=event))
@@ -136,7 +142,7 @@ class FridayBrain(FrameProcessor):
     async def _on_transcription(self, frame: TranscriptionFrame) -> None:
         self._timer.mark("stt_done")
         text = frame.text.strip()
-        if self._wake and not self._wake.feed(text):
+        if self._wake and not self._wake.admit(text):
             # Conversa que não é para a Friday: o agregador também a ignora.
             await self.push_frame(frame)
             return
@@ -157,9 +163,9 @@ class FridayBrain(FrameProcessor):
 
         await self.emit(events.transcript("user", text))
 
+        await self._flush_expired()
         pending = self._deps.confirmations.pending()
-        if pending is not None:
-            await self._answer_pending(pending, text)
+        if pending is not None and await self._answer_pending(pending, text):
             return
 
         self._refresh_system_prompt(text)
@@ -168,19 +174,32 @@ class FridayBrain(FrameProcessor):
         self._start_filler_timer()
         await self.push_frame(frame)
 
-    async def _answer_pending(self, pending: PendingAction, text: str) -> None:
+    async def _answer_pending(self, pending: PendingAction, text: str) -> bool:
+        """Trata a resposta a "confirmas?". Devolve False se a frase era outra conversa."""
+        if parse_confirmation(text) == "unclear":
+            if is_hedge(text) and self._asked_again != pending.id:
+                self._asked_again = pending.id
+                await self.say("ask_again")
+                return True
+            # Outra conversa (ou segunda hesitação): a ação é cancelada e a frase segue.
+            await self._cancel_pending()
+            return False
         resolution = self._deps.confirmations.resolve(text)
-        if resolution == "unclear":
-            await self.say("ask_again")
-            return
         if resolution == "confirmed":
             await self._run(pending)
             await self.say("done")
         else:
             await self.say("cancelled")
         await self.emit(events.confirm_cleared(pending.id))
+        return True
+
+    async def _flush_expired(self) -> None:
+        expired = self._deps.confirmations.take_expired()
+        if expired:
+            await self.emit(events.confirm_cleared(expired))
 
     async def _on_client_message(self, type_: str, data: dict[str, Any]) -> None:
+        await self._flush_expired()
         if type_ == "confirm":
             action = self._deps.confirmations.confirm_by_id(str(data.get("id", "")))
             if action is None:
@@ -253,7 +272,8 @@ class ReplyTap(FrameProcessor):
         await super().process_frame(frame, direction)
         await self.push_frame(frame, direction)
 
-        if isinstance(frame, UserStoppedSpeakingFrame):
+        if isinstance(frame, VADUserStoppedSpeakingFrame):
+            # O fim real da fala; o fim do turno (UserStopped…) já inclui o STT.
             self._timer.mark("speech_end")
         elif isinstance(frame, LLMFullResponseStartFrame):
             self._buffer = []

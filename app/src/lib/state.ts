@@ -20,7 +20,9 @@ export function reduce(state: UiState, event: CoreEvent): UiState {
   const d = event.data ?? {};
   switch (event.type) {
     case "connection":
-      return { ...state, reactor: d.connected ? "listening" : "offline" };
+      // Ligado não é pronto: o Core manda "state" quando estiver mesmo a ouvir.
+      // Ao perder a ligação, o pedido pendente foi cancelado no Core.
+      return d.connected ? state : { ...state, reactor: "offline", pending: undefined };
     case "state":
       return REACTOR_STATES.includes(d.value) ? { ...state, reactor: d.value } : state;
     case "transcript":

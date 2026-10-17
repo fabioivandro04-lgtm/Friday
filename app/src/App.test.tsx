@@ -14,6 +14,7 @@ function fakeFactory() {
       async connect(p) {
         entry.urls.push(p.wsUrl);
         cb.onConnected();
+        cb.onServerMessage({ type: "state", data: { value: "listening" } });
       },
       async disconnect() {},
       enableMic(on) {
@@ -52,4 +53,26 @@ test("modo sempre à escuta liga o microfone e muda a dica", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Ligar" }));
   expect(await screen.findByText(/DIZ “FRIDAY”/)).toBeInTheDocument();
   expect(f.made[0].mic).toEqual([true]);
+});
+
+test("endereço sem http:// é corrigido e há maneira de voltar a emparelhar", async () => {
+  const f = fakeFactory();
+  render(<App createClient={f.createClient} />);
+  await userEvent.clear(screen.getByLabelText("Endereço do Core"));
+  await userEvent.type(screen.getByLabelText("Endereço do Core"), "100.64.1.2:8765");
+  await userEvent.type(screen.getByLabelText("Token"), "abc");
+  await userEvent.click(screen.getByRole("button", { name: "Ligar" }));
+  expect(await screen.findByText("A OUVIR")).toBeInTheDocument();
+  expect(f.made[0].urls).toEqual(["ws://100.64.1.2:8765/ws?token=abc"]);
+  await userEvent.click(screen.getByRole("button", { name: "Emparelhar de novo" }));
+  expect(screen.getByLabelText("Token")).toBeInTheDocument();
+});
+
+test("endereço inválido mostra erro em vez de ecrã branco", async () => {
+  render(<App createClient={fakeFactory().createClient} />);
+  await userEvent.clear(screen.getByLabelText("Endereço do Core"));
+  await userEvent.type(screen.getByLabelText("Endereço do Core"), "http://");
+  await userEvent.type(screen.getByLabelText("Token"), "abc");
+  await userEvent.click(screen.getByRole("button", { name: "Ligar" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("Endereço inválido");
 });
