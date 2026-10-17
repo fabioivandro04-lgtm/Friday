@@ -5,7 +5,7 @@ Corre no PC com a RTX 4060 Ti, com o Ollama a correr e o Core arrancado
 
 ## Critérios de sucesso da especificação
 
-- [ ] **Conversa PT-PT.** Mantém Ctrl+Espaço e diz "Olá Friday, que horas são?".
+- [ ] **Conversa PT-PT.** Mantém Ctrl+Shift+Espaço e diz "Olá Friday, que horas são?".
   O reator passa por A OUVIR → A PENSAR → A FALAR e a resposta vem em português de Portugal.
 - [ ] **Conversa EN e troca de voz.** Diz "What is the capital of Australia?".
   A resposta vem em inglês, com a voz inglesa (painel Sistema: `en_GB-alan-medium`).

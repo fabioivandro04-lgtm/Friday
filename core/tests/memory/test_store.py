@@ -48,3 +48,26 @@ def test_fast_embedder_default_model_is_supported_by_fastembed():
     supported = {m["model"]: m["dim"] for m in TextEmbedding.list_supported_models()}
     assert FastEmbedder.MODEL in supported
     assert supported[FastEmbedder.MODEL] == FastEmbedder.dim
+
+
+def test_concurrent_use_from_threads(tmp_path, fake_embedder):
+    import threading
+
+    store = MemoryStore(str(tmp_path / "m.db"), fake_embedder)
+    errors = []
+
+    def work(i):
+        try:
+            for j in range(20):
+                store.log_turn("user", f"frase {i}-{j}")
+                store.add_fact(f"Gosto de café {i}-{j}")
+                store.search("café")
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []

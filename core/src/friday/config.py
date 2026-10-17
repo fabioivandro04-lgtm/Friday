@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from collections.abc import Mapping
@@ -66,12 +67,17 @@ class Config:
     wake: WakeConfig = field(default_factory=WakeConfig)
 
 
+logger = logging.getLogger("friday.config")
+
 # Segredos nunca vêm do TOML (que pode acabar no Git), só do ambiente / .env.
 _SECRET_KEYS = {"cloud_api_key", "token"}
 
 
-def _section(cls: type, data: Mapping[str, Any]) -> dict[str, Any]:
+def _section(cls: type, data: Mapping[str, Any], name: str = "") -> dict[str, Any]:
     allowed = {f.name for f in fields(cls)} - _SECRET_KEYS
+    for key in data:
+        if key not in allowed and key not in _SECRET_KEYS:
+            logger.warning("friday.toml: chave desconhecida %s.%s (ignorada)", name, key)
     return {k: v for k, v in data.items() if k in allowed}
 
 
@@ -81,21 +87,23 @@ def load_config(path: Path, env: Mapping[str, str] = os.environ) -> Config:
     tts_raw = raw.get("tts", {})
     for key in ("voice_pt", "voice_en"):
         if not tts_raw.get(key):
-            raise ValueError(f"friday.toml: falta [tts].{key} (caminho da voz Piper)")
+            raise ValueError(
+                f"friday.toml: falta [tts].{key} (ID da voz Piper, ex.: pt_PT-tugão-medium)"
+            )
 
     llm = LlmConfig(
-        **_section(LlmConfig, raw.get("llm", {})),
+        **_section(LlmConfig, raw.get("llm", {}), "llm"),
         cloud_api_key=env.get("OPENROUTER_API_KEY") or None,
     )
     server = ServerConfig(
-        **_section(ServerConfig, raw.get("server", {})),
+        **_section(ServerConfig, raw.get("server", {}), "server"),
         token=env.get("FRIDAY_TOKEN") or None,
     )
     return Config(
-        tts=TtsConfig(**_section(TtsConfig, tts_raw)),
-        stt=SttConfig(**_section(SttConfig, raw.get("stt", {}))),
+        tts=TtsConfig(**_section(TtsConfig, tts_raw, "tts")),
+        stt=SttConfig(**_section(SttConfig, raw.get("stt", {}), "stt")),
         llm=llm,
         server=server,
-        memory=MemoryConfig(**_section(MemoryConfig, raw.get("memory", {}))),
-        wake=WakeConfig(**_section(WakeConfig, raw.get("wake", {}))),
+        memory=MemoryConfig(**_section(MemoryConfig, raw.get("memory", {}), "memory")),
+        wake=WakeConfig(**_section(WakeConfig, raw.get("wake", {}), "wake")),
     )

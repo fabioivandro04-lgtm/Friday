@@ -265,3 +265,30 @@ async def test_wake_awake_from_pipecat_processes_follow_up(deps, tts, context):
     )
     down, _ = await run_test(brain, frames_to_send=[_tr("e depois o que aconteceu")])
     assert {"type": "state", "data": {"value": "thinking"}} in _events(down)
+
+
+async def test_tool_error_is_not_spoken_as_llm_failure(brain):
+    from pipecat.frames.frames import ErrorFrame
+    from pipecat.utils.errors import ErrorCategory
+
+    err = ErrorFrame("Error executing function call [web_search]: boom")
+    err.category = ErrorCategory.APPLICATION
+    down, _ = await run_test(brain, frames_to_send=[err])
+    assert "O modelo local não está a responder." not in _spoken(down)
+    assert any(e["type"] == "system" and e["data"]["error"] for e in _events(down))
+
+
+async def test_filler_cancelled_when_user_speaks_again(deps, tts, context):
+    from pipecat.tests.utils import SleepFrame
+
+    brain = _fast_brain(deps, tts, context)
+    down, _ = await run_test(
+        brain,
+        frames_to_send=[
+            _tr("conta-me uma história longa"),
+            SleepFrame(0.01),
+            UserStartedSpeakingFrame(),
+            SleepFrame(0.2),
+        ],
+    )
+    assert "Deixa-me ver…" not in _spoken(down)

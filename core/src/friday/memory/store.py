@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import threading
 import time
 from typing import Literal, Protocol
 
@@ -42,6 +43,8 @@ class MemoryStore:
     def __init__(self, db_path: str, embedder: Embedder, min_similarity: float = 0.35) -> None:
         self._embedder = embedder
         self._min_similarity = min_similarity
+        # Usado do event loop e de threads (asyncio.to_thread): um lock serializa o acesso.
+        self._lock = threading.RLock()
         self._db = sqlite3.connect(db_path, check_same_thread=False)
         self._db.enable_load_extension(True)
         sqlite_vec.load(self._db)
@@ -72,6 +75,10 @@ class MemoryStore:
         return [(text, 1.0 - distance) for text, distance in rows]
 
     def add_fact(self, text: str) -> bool:
+        with self._lock:
+            return self._add_fact(text)
+
+    def _add_fact(self, text: str) -> bool:
         text = text.strip()
         if not text:
             return False
@@ -89,6 +96,10 @@ class MemoryStore:
         return True
 
     def search(self, query: str, k: int = 3) -> list[str]:
+        with self._lock:
+            return self._search(query, k)
+
+    def _search(self, query: str, k: int) -> list[str]:
         return [
             text
             for text, sim in self._nearest(self._vector(query), k)
@@ -96,7 +107,7 @@ class MemoryStore:
         ]
 
     def log_turn(self, role: Literal["user", "assistant"], text: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO turns (role, text, created_at) VALUES (?, ?, ?)",
                 (role, text, time.time()),

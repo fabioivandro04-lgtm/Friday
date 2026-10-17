@@ -55,3 +55,13 @@ def test_wake_word_enabled(tmp_path):
     p = tmp_path / "friday.toml"
     p.write_text('[tts]\nvoice_pt = "a"\nvoice_en = "b"\n[wake]\nenabled = true\n')
     assert load_config(p, env={}).wake.enabled is True
+
+
+def test_unknown_keys_are_warned(tmp_path, caplog):
+    import logging
+
+    p = tmp_path / "friday.toml"
+    p.write_text('[tts]\nvoice_pt = "a"\nvoice_en = "b"\n[llm]\nlocal_modle = "x"\n')
+    with caplog.at_level(logging.WARNING, logger="friday"):
+        load_config(p, env={})
+    assert "llm.local_modle" in caplog.text

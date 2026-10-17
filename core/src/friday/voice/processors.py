@@ -25,6 +25,8 @@ from pipecat.frames.frames import (
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi.frames import RTVIClientMessageFrame, RTVIServerMessageFrame
+from pipecat.services.llm_service import LLMService
+from pipecat.utils.errors import ErrorCategory
 
 from friday.config import Config
 from friday.llm.providers import SlowResponseWatch, filler_phrase
@@ -62,6 +64,14 @@ _SAY = {
         "llm_down": "The local model isn't responding.",
     },
 }
+
+
+def _is_llm_failure(frame: ErrorFrame) -> bool:
+    """Só falhas do próprio LLM são ditas em voz; erros de ferramentas o LLM já explica."""
+    if getattr(frame, "category", None) == ErrorCategory.APPLICATION:
+        return False
+    processor = getattr(frame, "processor", None)
+    return processor is None or isinstance(processor, LLMService)
 
 
 @dataclass
@@ -121,18 +131,19 @@ class FridayBrain(FrameProcessor):
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._bot_speaking = False
         elif isinstance(frame, (UserStartedSpeakingFrame, InterruptionFrame)):
+            # O utilizador voltou a falar: a frase de espera já não faz sentido.
+            self._cancel_filler()
             # Interromper a Friday enquanto pergunta "confirmas?" anula a ação.
             if self._bot_speaking:
                 await self._cancel_pending()
         elif isinstance(frame, ErrorFrame):
             # Depois de um erro já não vem resposta: nada de "Deixa-me ver…".
-            self._watch.first_token()
-            if self._filler_task:
-                self._filler_task.cancel()
+            self._cancel_filler()
             await self.emit(
                 events.system(self._cfg.llm.local_model, self._voice(), None, None, frame.error)
             )
-            await self.say("llm_down")
+            if _is_llm_failure(frame):
+                await self.say("llm_down")
 
         await self.push_frame(frame, direction)
 
@@ -168,8 +179,8 @@ class FridayBrain(FrameProcessor):
         if pending is not None and await self._answer_pending(pending, text):
             return
 
-        self._refresh_system_prompt(text)
-        self._deps.memory.log_turn("user", text)
+        await self._refresh_system_prompt(text)
+        await asyncio.to_thread(self._deps.memory.log_turn, "user", text)
         await self.emit(events.state("thinking"))
         self._start_filler_timer()
         await self.push_frame(frame)
@@ -222,12 +233,19 @@ class FridayBrain(FrameProcessor):
     async def _run(self, action: PendingAction) -> str:
         return await self._deps.registry.get(action.tool).handler(**action.args)
 
-    def _refresh_system_prompt(self, text: str) -> None:
-        prompt = system_prompt(self.lang, self._deps.memory.context_for(text))
+    async def _refresh_system_prompt(self, text: str) -> None:
+        # Embeddings + SQLite numa thread, para não atrasar o áudio.
+        memory = await asyncio.to_thread(self._deps.memory.context_for, text)
+        prompt = system_prompt(self.lang, memory)
         if self._cfg.llm.provider == "local" and self._cfg.llm.local_model.startswith("qwen3"):
             prompt += "\n/no_think"  # desliga o raciocínio do Qwen3 (mais rápido)
         others = [m for m in self._context.messages if m.get("role") != "system"]
         self._context.set_messages([{"role": "system", "content": prompt}, *others])
+
+    def _cancel_filler(self) -> None:
+        self._watch.first_token()
+        if self._filler_task:
+            self._filler_task.cancel()
 
     def _start_filler_timer(self) -> None:
         if self._filler_task:
@@ -285,7 +303,7 @@ class ReplyTap(FrameProcessor):
             text = "".join(self._buffer).strip()
             self._buffer = []
             if text:
-                self._deps.memory.log_turn("assistant", text)
+                await asyncio.to_thread(self._deps.memory.log_turn, "assistant", text)
                 await self.emit(events.transcript("assistant", text))
         elif isinstance(frame, BotStartedSpeakingFrame) and direction == FrameDirection.UPSTREAM:
             self._timer.mark("tts_first_audio")
@@ -302,4 +320,5 @@ class ReplyTap(FrameProcessor):
             if self._cfg.llm.provider == "local"
             else (self._cfg.llm.cloud_model or self._cfg.llm.local_model)
         )
-        await self.emit(events.system(model, voice, latency, vram_used_gb()))
+        vram = await asyncio.to_thread(vram_used_gb)
+        await self.emit(events.system(model, voice, latency, vram))

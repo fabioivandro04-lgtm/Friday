@@ -44,7 +44,7 @@ export function Hud({ state, onConfirm, onCancel, onTalk, talking = false, hint,
               <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
             </svg>
           </button>
-          <p className="hint">{hint ?? "MANTÉM CTRL + ESPAÇO PARA FALAR"}</p>
+          <p className="hint">{hint ?? "MANTÉM CTRL + SHIFT + ESPAÇO PARA FALAR"}</p>
         </main>
         <div className="col-side">
           <EmailPanel />

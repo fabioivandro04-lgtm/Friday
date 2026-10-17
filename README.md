@@ -66,7 +66,7 @@ npm run tauri build
 Na primeira vez, a app pede o endereço do Core (`http://127.0.0.1:8765`) e o
 token de `/pair`. Depois:
 
-- **Mantém Ctrl+Espaço** para falar (funciona mesmo com a janela em segundo plano), ou
+- **Mantém Ctrl+Shift+Espaço** para falar (funciona mesmo com a janela em segundo plano), ou
 - carrega no botão do microfone, ou
 - ativa **Sempre à escuta** e diz "Friday" (precisa de `[wake] enabled = true` no `friday.toml`).
 

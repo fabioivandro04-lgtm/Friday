@@ -48,7 +48,8 @@ def main() -> None:
         await run_voice_session(websocket, cfg, deps)
 
     app = create_app(cfg, voice_handler=voice_handler, static_dir=APP_DIST)
-    uvicorn.run(app, host=cfg.server.host, port=cfg.server.port)
+    # Sem access log: o token vai no URL do WebSocket e não deve ficar escrito.
+    uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, access_log=False)
 
 
 if __name__ == "__main__":

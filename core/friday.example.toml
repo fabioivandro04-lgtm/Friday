@@ -36,7 +36,7 @@ min_similarity = 0.35
 
 [wake]
 # Modo "sempre à escuta": a Friday só responde depois de ouvir o nome dela.
-# Desligado = falas com Ctrl+Espaço ou com o botão do microfone.
+# Desligado = falas com Ctrl+Shift+Espaço ou com o botão do microfone.
 enabled = false
 phrases = ["friday"]
 # Segundos em que continua a ouvir depois da última frase.
