@@ -82,8 +82,13 @@ tailscale serve --bg 8765
 ```
 
 No telemóvel (com o Tailscale ligado), abre `https://<nome-do-pc>.<tailnet>.ts.net`,
-cola o token que vês em `http://127.0.0.1:8765/pair` **no PC**, e adiciona a página
-ao ecrã inicial.
+cola o token que vês em `http://127.0.0.1:8765/pair` **no PC**, e instala a app:
+
+- **Android (Chrome):** menu ⋮ → *Instalar app*.
+- **iPhone (Safari):** Partilhar → *Adicionar ao ecrã principal*.
+
+Fica com ícone próprio e abre em ecrã inteiro, como uma app. Os avisos (lembretes,
+resumo da manhã) chegam pelo Telegram (secção 5).
 
 ## 4. Ligar o email e a agenda
 
