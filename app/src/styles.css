@@ -1,0 +1,54 @@
+/* As cores vêm de theme.ts (aplicadas como variáveis CSS em main.tsx). */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--text); font-family: var(--font-ui); }
+button { font-family: inherit; }
+
+.hud { min-height: 100vh; display: flex; flex-direction: column; gap: 24px; padding: 24px clamp(16px, 3vw, 40px); }
+.hud-header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.brand { font-size: 18px; font-weight: 600; letter-spacing: 0.32em; color: var(--accent); }
+.hud-body { flex-grow: 1; display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch; }
+.col-side { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.col-main { flex: 2 1 380px; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 16px; }
+
+.panel { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 20px; background: var(--panel); }
+.panel-title { margin: 0; font-family: var(--font-data); font-size: 12px; font-weight: 500; letter-spacing: 0.2em; color: var(--accent); }
+.panel-foot { margin: auto 0 0; font-family: var(--font-data); font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+.placeholder { margin: 0; color: var(--muted); font-size: 15px; }
+.data { font-family: var(--font-data); font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; justify-content: space-between; gap: 8px; }
+.muted { color: var(--muted); }
+.error { margin: 0; color: var(--warning); font-size: 14px; }
+
+.reactor-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.reactor { position: relative; width: 200px; aspect-ratio: 1; }
+.ring, .core { position: absolute; border-radius: 50%; }
+.ring-b { inset: 0; border: 2px solid transparent; opacity: 0.55; }
+.ring-a { inset: 14%; border: 1px solid; opacity: 0.8; }
+.core { inset: 32%; border: 2px solid; background: #0A141B; }
+.reactor-label { font-family: var(--font-data); font-size: 12px; letter-spacing: 0.2em; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spinr { to { transform: rotate(-360deg); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.reactor--listening .ring-a, .reactor--thinking .ring-a, .reactor--speaking .ring-a { animation: spin 18s linear infinite; }
+.reactor--listening .ring-b, .reactor--thinking .ring-b, .reactor--speaking .ring-b { animation: spinr 26s linear infinite; }
+.reactor--listening .core { animation: pulse 1.6s ease-in-out infinite; }
+.reactor--thinking .core { animation: pulse 0.7s ease-in-out infinite; }
+.reactor--speaking .core { animation: pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ring, .core { animation: none !important; } }
+
+.transcript { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
+.transcript p { margin: 0; }
+.transcript-user { font-size: 15px; color: var(--muted); }
+.transcript-assistant { font-size: 19px; line-height: 1.45; }
+
+.confirm { width: 100%; max-width: 560px; border: 1px solid var(--accent); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #0A141B; }
+.confirm-title { font-family: var(--font-data); font-size: 11px; letter-spacing: 0.2em; color: var(--accent); }
+.confirm-summary { font-size: 15px; line-height: 1.5; }
+.confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.btn { min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid #2A3744; background: transparent; color: #C9D3DC; font-size: 14px; cursor: pointer; }
+.btn-primary { border-color: var(--accent); background: var(--accent); color: var(--ground); font-weight: 600; }
+
+.mic { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: #0A141B; color: var(--accent); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.mic[aria-pressed="true"] { background: var(--accent); color: var(--ground); }
+.hint { margin: 0; font-family: var(--font-data); font-size: 11px; letter-spacing: 0.12em; color: var(--muted); }
