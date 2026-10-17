@@ -7,6 +7,8 @@ import io
 from collections.abc import Callable
 from typing import Any
 
+from friday.voice.whisper_model import load_whisper
+
 
 def _load_whisper(name: str, device: str) -> Any:
     from faster_whisper import WhisperModel
@@ -20,7 +22,7 @@ class FileTranscriber:
     """Carrega o Whisper só na primeira nota de voz (não ocupa VRAM sem necessidade)."""
 
     def __init__(
-        self, model: str, device: str, loader: Callable[[str, str], Any] = _load_whisper
+        self, model: str, device: str, loader: Callable[[str, str], Any] = load_whisper
     ) -> None:
         self._name, self._device, self._loader = model, device, loader
         self._model: Any = None

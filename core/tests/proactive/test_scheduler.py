@@ -76,6 +76,12 @@ async def test_no_briefing_on_weekend_or_when_late(tmp_path):
     assert sink.messages == []
 
 
+async def test_notify_reports_delivery():
+    sink = Sink()
+    assert await Notifier(telegram=sink, announcer=Announcer()).notify("x") is True
+    assert await Notifier(telegram=None, announcer=Announcer()).notify("x") is False
+
+
 async def test_announcer_speaks_when_a_voice_session_is_active(tmp_path):
     spoken = []
 
@@ -107,3 +113,50 @@ async def test_failing_channel_does_not_stop_others(tmp_path):
     ann.attach(speak)
     await Notifier(telegram=Broken(), announcer=ann).notify("x")
     assert spoken == ["x"]
+
+
+async def test_undelivered_reminder_is_kept_for_later(tmp_path):
+    t = [datetime(2026, 10, 19, 9, 0, tzinfo=TZ)]
+    store = ReminderStore(str(tmp_path / "r.db"))
+    sched = Scheduler(
+        store,
+        Notifier(telegram=None, announcer=Announcer()),
+        None,
+        BriefingConfig(),
+        now=lambda: t[0],
+    )
+    store.add(t[0] - timedelta(minutes=1), "beber água")
+    await sched.tick()
+    assert [r.text for r in store.due(t[0])] == ["beber água"]  # ninguém o recebeu
+
+
+async def test_briefing_not_repeated_after_restart(tmp_path):
+    cfg = BriefingConfig(enabled=True, time="08:00", weekdays_only=False)
+    t = [datetime(2026, 10, 19, 8, 1, tzinfo=TZ)]
+    _, sink, sched = _sched(tmp_path, t, cfg, FakeBriefing())
+    await sched.tick()
+    _, sink2, sched2 = _sched(tmp_path, t, cfg, FakeBriefing())  # Core reiniciado às 8h05
+    t[0] = datetime(2026, 10, 19, 8, 5, tzinfo=TZ)
+    await sched2.tick()
+    assert len(sink.messages) == 1 and sink2.messages == []
+
+
+async def test_failed_call_briefing_falls_back_to_telegram(tmp_path):
+    cfg = BriefingConfig(enabled=True, time="08:00", weekdays_only=False, channel="call")
+    t = [datetime(2026, 10, 19, 8, 1, tzinfo=TZ)]
+    store = ReminderStore(str(tmp_path / "r.db"))
+    sink = Sink()
+
+    async def broken_call(text):
+        raise RuntimeError("Twilio em baixo")
+
+    sched = Scheduler(
+        store,
+        Notifier(telegram=sink, announcer=Announcer()),
+        FakeBriefing(),
+        cfg,
+        now=lambda: t[0],
+        deliver_briefing=broken_call,
+    )
+    await sched.tick()
+    assert sink.messages == ["Bom dia! Hoje tens 2 reuniões."]

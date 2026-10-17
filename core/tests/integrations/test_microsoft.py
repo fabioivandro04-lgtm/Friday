@@ -124,3 +124,46 @@ async def test_read_text_body(token):
     )
     assert "Olá!" in await Outlook(token, LISBON).read("x1")
     assert 'outlook.body-content-type="text"' in route.calls[0].request.headers["prefer"]
+
+
+@respx.mock
+async def test_unknown_graph_timezone_falls_back(token):
+    respx.get(f"{G}/calendarView").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "o1",
+                        "subject": "X",
+                        "start": {
+                            "dateTime": "2026-10-17T17:00:00",
+                            "timeZone": "GMT Standard Time",
+                        },
+                        "end": {"dateTime": "2026-10-17T18:00:00", "timeZone": "GMT Standard Time"},
+                    }
+                ]
+            },
+        )
+    )
+    [ev] = await Outlook(token, LISBON).list_events(date(2026, 10, 17))
+    assert ev.start == datetime(2026, 10, 17, 17, 0, tzinfo=LISBON)
+
+
+@respx.mock
+async def test_inbox_asks_graph_for_unread(token):
+    route = respx.get(f"{G}/mailFolders/inbox/messages").mock(
+        return_value=httpx.Response(200, json={"value": []})
+    )
+    await Outlook(token, LISBON).inbox(5)
+    assert route.calls[0].request.url.params["$filter"] == "isRead eq false"
+
+
+@respx.mock
+async def test_describe(token):
+    respx.get(f"{G}/messages/x1").mock(
+        return_value=httpx.Response(
+            200, json={"subject": "S", "from": {"emailAddress": {"name": "A", "address": "a@x.pt"}}}
+        )
+    )
+    assert await Outlook(token, LISBON).describe("x1") == ("A <a@x.pt>", "S")

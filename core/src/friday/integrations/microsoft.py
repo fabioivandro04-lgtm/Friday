@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from friday.integrations._http import day_bounds, request
 from friday.integrations.models import CalendarEvent, MailSummary, TokenSource
@@ -11,10 +11,17 @@ from friday.integrations.models import CalendarEvent, MailSummary, TokenSource
 G = "https://graph.microsoft.com/v1.0/me"
 
 
+def _zone(name: str | None, fallback: ZoneInfo) -> ZoneInfo:
+    try:
+        return ZoneInfo(name) if name else fallback
+    except (ZoneInfoNotFoundError, ValueError):  # nomes do Windows, fusos personalizados
+        return fallback
+
+
 def _graph_time(value: dict, tz: ZoneInfo) -> datetime:
     # Graph devolve "2026-10-17T17:00:00.0000000" no fuso pedido em Prefer.
     raw = value["dateTime"].split(".")[0]
-    return datetime.fromisoformat(raw).replace(tzinfo=ZoneInfo(value.get("timeZone") or str(tz)))
+    return datetime.fromisoformat(raw).replace(tzinfo=_zone(value.get("timeZone"), tz))
 
 
 def _event(item: dict, tz: ZoneInfo) -> CalendarEvent:
@@ -75,8 +82,8 @@ class Outlook:
 
     async def inbox(self, limit: int = 5) -> list[MailSummary]:
         params = {
-            "$top": str(limit * 4),
-            "$orderby": "receivedDateTime desc",
+            "$filter": "isRead eq false",
+            "$top": str(limit),
             "$select": "id,subject,from,bodyPreview,receivedDateTime,isRead,importance",
         }
         data = (
@@ -117,6 +124,12 @@ class Outlook:
             f"Assunto: {m.get('subject', '')}\n\n"
             f"{(m.get('body') or {}).get('content', '')}"
         )
+
+    async def describe(self, message_id: str) -> tuple[str, str]:
+        params = {"$select": "subject,from,replyTo"}
+        m = (await request(self._token, "GET", f"{G}/messages/{message_id}", params=params)).json()
+        to = (m.get("replyTo") or [m.get("from") or {}])[0].get("emailAddress", {})
+        return f"{to.get('name', '')} <{to.get('address', '')}>".strip(), m.get("subject", "")
 
     async def send(self, to: str, subject: str, body: str) -> None:
         payload = {

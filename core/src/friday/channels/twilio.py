@@ -102,4 +102,5 @@ class TwilioGateway:
 
     def ws_url(self, token: str) -> str:
         base = self.cfg.public_url.rstrip("/").replace("https://", "wss://", 1)
-        return f"{base}/twilio/ws?t={token}"
+        # No caminho e não na query string: a Twilio não aceita parâmetros no URL do <Stream>.
+        return f"{base}/twilio/ws/{token}"

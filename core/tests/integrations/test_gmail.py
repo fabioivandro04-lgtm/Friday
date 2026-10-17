@@ -89,7 +89,7 @@ async def test_send_builds_mime(token):
 
 @respx.mock
 async def test_reply_keeps_thread(token):
-    respx.get(f"{BASE}/messages/m1").mock(
+    meta = respx.get(f"{BASE}/messages/m1").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -100,6 +100,8 @@ async def test_reply_keeps_thread(token):
                         {"name": "From", "value": "João <joao@x.pt>"},
                         {"name": "Subject", "value": "Hora"},
                         {"name": "Message-ID", "value": "<abc@mail>"},
+                        {"name": "References", "value": "<zero@mail>"},
+                        {"name": "Reply-To", "value": "lista@x.pt"},
                     ]
                 },
             },
@@ -115,5 +117,35 @@ async def test_reply_keeps_thread(token):
         base64.urlsafe_b64decode(sent["raw"] + "=" * (-len(sent["raw"]) % 4)),
         policy=email.policy.default,
     )
-    assert msg["To"] == "João <joao@x.pt>" and msg["Subject"] == "Re: Hora"
+    assert msg["To"] == "lista@x.pt" and msg["Subject"] == "Re: Hora"
     assert msg["In-Reply-To"] == "<abc@mail>"
+    assert msg["References"] == "<zero@mail> <abc@mail>"
+    # a API real só devolve os cabeçalhos pedidos
+    asked = meta.calls[0].request.url.params.get_list("metadataHeaders")
+    assert {"Message-ID", "Reply-To", "References"} <= set(asked)
+
+
+@respx.mock
+async def test_describe_for_confirmation(token):
+    respx.get(f"{BASE}/messages/m1").mock(
+        return_value=httpx.Response(
+            200, json=_meta("m1", "João <joao@x.pt>", "Hora", "", 1792224000000)
+        )
+    )
+    assert await Gmail(token, LISBON).describe("m1") == ("João <joao@x.pt>", "Hora")
+
+
+@respx.mock
+async def test_html_only_email_is_readable(token):
+    html = base64.urlsafe_b64encode("<p>Olá <b>Fábio</b></p><style>x{}</style>".encode()).decode()
+    respx.get(f"{BASE}/messages/m2").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "m2",
+                "payload": {"headers": [], "mimeType": "text/html", "body": {"data": html}},
+            },
+        )
+    )
+    text = await Gmail(token, LISBON).read("m2")
+    assert "Olá Fábio" in text and "<b>" not in text

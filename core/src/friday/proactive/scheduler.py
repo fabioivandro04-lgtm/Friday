@@ -50,17 +50,20 @@ class Notifier:
         self._telegram = telegram
         self._announcer = announcer
 
-    async def notify(self, text: str) -> None:
-        for name, send in (
-            ("telegram", self._telegram and self._telegram.notify),
-            ("voz", self._announcer.say),
-        ):
-            if not send:
-                continue
+    async def notify(self, text: str) -> bool:
+        """Devolve True se pelo menos um canal entregou o aviso."""
+        delivered = False
+        if self._telegram is not None:
             try:
-                await send(text)
+                await self._telegram.notify(text)
+                delivered = True
             except Exception as e:  # noqa: BLE001 — um canal em baixo não cala os outros
-                logger.warning("Aviso por %s falhou: %s", name, e)
+                logger.warning("Aviso por Telegram falhou: %s", e)
+        try:
+            delivered = await self._announcer.say(text) or delivered
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Aviso por voz falhou: %s", e)
+        return delivered
 
 
 class Scheduler:
@@ -71,7 +74,7 @@ class Scheduler:
         briefing: BriefingSource | None,
         briefing_cfg: BriefingConfig,
         now: Callable[[], datetime],
-        deliver_briefing: Callable[[str], Awaitable[None]] | None = None,
+        deliver_briefing: Callable[[str], Awaitable[object]] | None = None,
         interval_s: float = 30.0,
     ) -> None:
         self._reminders = reminders
@@ -79,21 +82,33 @@ class Scheduler:
         self._briefing = briefing
         self._cfg = briefing_cfg
         self._now = now
-        self._deliver = deliver_briefing or notifier.notify
+        self._deliver = deliver_briefing
         self._interval = interval_s
-        self._last_briefing = None
 
     async def tick(self) -> None:
         now = self._now()
         for r in await asyncio.to_thread(self._reminders.due, now):
-            await self._notifier.notify(f"Lembrete: {r.text}")
-            await asyncio.to_thread(self._reminders.mark_done, r.id)
-        if self._briefing_due(now):
-            self._last_briefing = now.date()
-            await self._deliver(await self._briefing.build())
+            # Só fica feito se alguém o recebeu; senão volta a tentar no próximo ciclo.
+            if await self._notifier.notify(f"Lembrete: {r.text}"):
+                await asyncio.to_thread(self._reminders.mark_done, r.id)
+        if await asyncio.to_thread(self._briefing_due, now):
+            # Guardado em SQLite: reiniciar o Core às 8h05 não repete o resumo.
+            await asyncio.to_thread(
+                self._reminders.set_state, "last_briefing", now.date().isoformat()
+            )
+            text = await self._briefing.build()
+            if self._deliver is not None:
+                try:
+                    await self._deliver(text)
+                    return
+                except Exception as e:  # noqa: BLE001 — ex.: Twilio em baixo
+                    logger.warning("Resumo por chamada falhou (%s); a enviar por mensagem.", e)
+            await self._notifier.notify(text)
 
     def _briefing_due(self, now: datetime) -> bool:
-        if not (self._cfg.enabled and self._briefing) or self._last_briefing == now.date():
+        if not (self._cfg.enabled and self._briefing):
+            return False
+        if self._reminders.get_state("last_briefing") == now.date().isoformat():
             return False
         if self._cfg.weekdays_only and now.weekday() >= 5:
             return False

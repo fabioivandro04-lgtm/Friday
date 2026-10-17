@@ -69,6 +69,11 @@ class IntegrationHub:
         provider, message_id = self._resolve(ref)
         return await provider.read(message_id)
 
+    async def describe(self, ref: str) -> tuple[str, str]:
+        """(destinatário da resposta, assunto) — para o pedido de confirmação."""
+        provider, message_id = self._resolve(ref)
+        return await provider.describe(message_id)
+
     async def reply(self, ref: str, body: str) -> None:
         provider, message_id = self._resolve(ref)
         await provider.reply(message_id, body)

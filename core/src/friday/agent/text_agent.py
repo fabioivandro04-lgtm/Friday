@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Protocol
@@ -25,7 +26,9 @@ from friday.voice.language import Lang
 logger = logging.getLogger("friday.agent")
 
 _MAX_TOOL_ROUNDS = 5
-_MAX_HISTORY = 30
+_MAX_EXCHANGES = 12  # trocas completas (pedido, ferramentas, resposta) guardadas por conversa
+# Por mensagem as pessoas demoram a responder: o pedido de confirmação dura 15 minutos.
+_TEXT_CONFIRM_TTL_S = 15 * 60
 _TEXT_MODE = {
     "pt": (
         "\nCanal: estás a responder por mensagem escrita (Telegram). Podes usar até 6 frases "
@@ -43,6 +46,8 @@ _SAY = {
         "done": "Feito",
         "llm_down": "O modelo não está a responder. Tenta daqui a pouco.",
         "stuck": "Não consegui terminar isso. Podes reformular?",
+        "confirm": "Confirmas? Responde sim ou não.",
+        "expired": "Esse pedido expirou e não foi feito. Pede outra vez, por favor.",
     },
     "en": {
         "cancelled": "Cancelled.",
@@ -50,6 +55,8 @@ _SAY = {
         "done": "Done",
         "llm_down": "The model isn't responding. Try again shortly.",
         "stuck": "I couldn't finish that. Could you rephrase?",
+        "confirm": "Do you confirm? Reply yes or no.",
+        "expired": "That request expired and wasn't done. Please ask again.",
     },
 }
 _EN_WORDS = {
@@ -150,20 +157,31 @@ class TextAgent:
         self._memory = memory
         self._client = client
         self._tz = ZoneInfo(cfg.integrations.timezone)
-        self._history: dict[str, list[dict]] = defaultdict(list)
-        self._confirmations: dict[str, ConfirmationManager] = defaultdict(ConfirmationManager)
+        self._history: dict[str, list[list[dict]]] = defaultdict(list)
+        self._clock = time.monotonic
+        self._confirmations: dict[str, ConfirmationManager] = {}
         self._asked_again: dict[str, str] = {}
         self._lang: dict[str, Lang] = defaultdict(lambda: "pt")
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
+    def _conf(self, conversation: str) -> ConfirmationManager:
+        if conversation not in self._confirmations:
+            self._confirmations[conversation] = ConfirmationManager(
+                ttl_s=_TEXT_CONFIRM_TTL_S, clock=lambda: self._clock()
+            )
+        return self._confirmations[conversation]
+
     def pending(self, conversation: str) -> PendingAction | None:
-        return self._confirmations[conversation].pending()
+        return self._conf(conversation).pending()
 
     async def reply(self, conversation: str, text: str) -> str:
         async with self._locks[conversation]:
             lang = guess_language(text, self._lang[conversation])
             self._lang[conversation] = lang
             pending = self.pending(conversation)
+            if pending is None and self._conf(conversation).take_expired():
+                if parse_confirmation(text) == "confirmed":
+                    return _SAY[lang]["expired"]  # um "sim" tardio não vai para o LLM
             if pending is not None:
                 answer = await self._answer_pending(conversation, pending, text, lang)
                 if answer is not None:
@@ -173,7 +191,7 @@ class TextAgent:
     async def _answer_pending(
         self, conversation: str, pending: PendingAction, text: str, lang: Lang
     ) -> str | None:
-        conf = self._confirmations[conversation]
+        conf = self._conf(conversation)
         if parse_confirmation(text) == "unclear":
             if is_hedge(text) and self._asked_again.get(conversation) != pending.id:
                 self._asked_again[conversation] = pending.id
@@ -186,35 +204,48 @@ class TextAgent:
             result = await self._registry.get(pending.tool).handler(**pending.args)
         except Exception as e:  # noqa: BLE001
             return f"ERRO: {e}"
-        self._remember_exchange(conversation, "user", text)
-        self._remember_exchange(conversation, "assistant", f"{_SAY[lang]['done']}: {result}")
-        return f"{_SAY[lang]['done']}: {result}"
+        done = f"{_SAY[lang]['done']}: {result}"
+        self._remember(
+            [{"role": "user", "content": text}, {"role": "assistant", "content": done}],
+            conversation,
+        )
+        return done
 
-    def _remember_exchange(self, conversation: str, role: str, content: str) -> None:
+    def _remember(self, exchange: list[dict], conversation: str) -> None:
+        # Trocas inteiras: uma mensagem "tool" nunca fica sem a chamada que a pediu.
         history = self._history[conversation]
-        history.append({"role": role, "content": content})
-        del history[:-_MAX_HISTORY]
+        history.append(exchange)
+        del history[:-_MAX_EXCHANGES]
 
     async def _converse(self, conversation: str, text: str, lang: Lang) -> str:
         memory = await asyncio.to_thread(self._memory.context_for, text)
         system = system_prompt(lang, memory, now=datetime.now(self._tz)) + _TEXT_MODE[lang]
-        self._remember_exchange(conversation, "user", text)
         await asyncio.to_thread(self._memory.log_turn, "user", text)
-        messages = [{"role": "system", "content": system}, *self._history[conversation]]
+        exchange: list[dict] = [{"role": "user", "content": text}]
+        past = [m for ex in self._history[conversation] for m in ex]
         tools = self._registry.schemas()
+        conf = self._conf(conversation)
         for _ in range(_MAX_TOOL_ROUNDS):
             try:
-                answer = await self._client.complete(messages, tools)
+                answer = await self._client.complete(
+                    [{"role": "system", "content": system}, *past, *exchange], tools
+                )
             except Exception as e:  # noqa: BLE001
                 logger.warning("LLM falhou: %s", e)
                 return _SAY[lang]["llm_down"]
             calls = answer.get("tool_calls") or []
             if not calls:
                 content = strip_thinking(answer.get("content") or "")
-                self._remember_exchange(conversation, "assistant", content)
+                exchange.append({"role": "assistant", "content": content})
+                self._remember(exchange, conversation)
                 await asyncio.to_thread(self._memory.log_turn, "assistant", content)
+                pending = conf.pending()
+                if pending is not None:
+                    # O que se confirma vem do código, não das palavras do LLM
+                    # (que podem ter sido manipuladas por um email ou página web).
+                    content = f"{content}\n\n➜ {pending.summary}. {_SAY[lang]['confirm']}".strip()
                 return content
-            messages.append(
+            exchange.append(
                 {
                     "role": "assistant",
                     "content": answer.get("content") or "",
@@ -232,8 +263,6 @@ class TextAgent:
                 }
             )
             for c in calls:
-                result = await execute(
-                    self._registry, self._confirmations[conversation], c["name"], c["arguments"]
-                )
-                messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
+                result = await execute(self._registry, conf, c["name"], c["arguments"])
+                exchange.append({"role": "tool", "tool_call_id": c["id"], "content": result})
         return _SAY[lang]["stuck"]

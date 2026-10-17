@@ -91,3 +91,31 @@ async def test_handler_exception_becomes_error_message():
     reg, conf = ToolRegistry(), ConfirmationManager()
     reg.register(Tool(name="t", description="", parameters={}, handler=boom))
     assert await execute(reg, conf, "t", {}) == "ERRO: rede em baixo"
+
+
+async def test_async_summary_and_bad_validate_input():
+    async def noop(**kw):
+        return "ok"
+
+    async def summary(args):
+        return f"Responder a {args['who']}"
+
+    def validate(args):
+        return None if "@" in args["to"] else "x"  # rebenta se o LLM mandar um número
+
+    reg, conf = ToolRegistry(), ConfirmationManager()
+    reg.register(Tool("r", "", {}, noop, mutating=True, summary=summary))
+    reg.register(Tool("v", "", {}, noop, mutating=True, validate=validate))
+    assert (await execute(reg, conf, "r", {"who": "João"})).startswith("PENDENTE: Responder a João")
+    assert (await execute(reg, conf, "v", {"to": 123})).startswith("ERRO:")
+
+
+async def test_second_mutating_call_is_refused_while_one_is_pending():
+    async def noop(**kw):
+        return "ok"
+
+    reg, conf = ToolRegistry(), ConfirmationManager()
+    reg.register(Tool("send", "", {}, noop, mutating=True, summary=lambda a: f"Enviar {a['n']}"))
+    await execute(reg, conf, "send", {"n": 1})
+    second = await execute(reg, conf, "send", {"n": 2})
+    assert second.startswith("ERRO:") and conf.pending().args == {"n": 1}

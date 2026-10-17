@@ -52,6 +52,9 @@ class Mail:
     async def reply(self, mid, body):
         self.sent.append(mid)
 
+    async def describe(self, mid):
+        return (f"para {self.name}", f"assunto {mid}")
+
 
 async def test_agenda_merges_sorted_and_skips_failing_provider():
     hub = IntegrationHub(

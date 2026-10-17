@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,7 @@ class Tool:
     # Ferramentas que alteram algo (enviar, apagar, marcar) exigem confirmação.
     mutating: bool = False
     # Texto do cartão de confirmação, a partir dos argumentos.
-    summary: Callable[[dict[str, Any]], str] | None = None
+    summary: Callable[[dict[str, Any]], str | Awaitable[str]] | None = None
     # Valida os argumentos antes de pedir confirmação; devolve a mensagem de erro ou None.
     validate: Callable[[dict[str, Any]], str | None] | None = None
 
@@ -60,10 +61,22 @@ async def execute(
         tool = registry.get(name)
     except KeyError:
         return f"ERRO: ferramenta desconhecida: {name}"
-    if tool.validate and (problem := tool.validate(args)):
+    try:
+        problem = tool.validate(args) if tool.validate else None
+    except Exception as e:  # argumentos com tipos errados vindos do LLM
+        problem = f"argumentos inválidos ({e})"
+    if problem:
         return f"ERRO: {problem}"
     if tool.mutating:
-        action = confirmations.propose(tool, args)
+        if confirmations.pending() is not None:
+            return "ERRO: já há uma ação à espera de confirmação; trata uma de cada vez."
+        try:
+            summary = tool.summary(args) if tool.summary else f"Executar {tool.name}"
+            if inspect.isawaitable(summary):
+                summary = await summary
+        except Exception as e:
+            return f"ERRO: {e}"
+        action = confirmations.propose(tool, args, summary=summary)
         return f"PENDENTE: {action.summary}. Pergunta ao utilizador se confirma."
     try:
         return await tool.handler(**args)

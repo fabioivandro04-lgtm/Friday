@@ -308,3 +308,18 @@ async def test_confirmed_action_triggers_after_action(deps, tts, context, sent):
     deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
     await run_test(brain, frames_to_send=[_tr("sim")])
     assert sent == ["João"] and calls == [1]
+
+
+async def test_announce_pending_speaks_the_canonical_summary(brain, deps):
+    pushed = []
+
+    async def fake_push(frame, direction=None):
+        pushed.append(frame)
+
+    brain.push_frame = fake_push
+    action = deps.confirmations.propose(deps.registry.get("send"), {"to": "João"})
+    await brain.announce_pending(action)
+    assert [f.text for f in pushed if isinstance(f, TTSSpeakFrame)] == ["Enviar a João. Confirmas?"]
+    assert {"type": "confirm_request", "data": {"id": action.id, "summary": "Enviar a João"}} in [
+        f.data for f in pushed if isinstance(f, RTVIServerMessageFrame)
+    ]

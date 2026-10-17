@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import re
 from datetime import UTC, datetime
 from email.message import EmailMessage
+from html import unescape
 from zoneinfo import ZoneInfo
 
 from friday.integrations._http import request
@@ -22,14 +24,25 @@ def _b64decode(data: str) -> str:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
 
 
-def _plain_text(payload: dict) -> str:
-    if payload.get("mimeType", "").startswith("text/plain") and payload.get("body", {}).get("data"):
+def _find(payload: dict, mime: str) -> str:
+    if payload.get("mimeType", "").startswith(mime) and payload.get("body", {}).get("data"):
         return _b64decode(payload["body"]["data"])
     for part in payload.get("parts", []):
-        text = _plain_text(part)
+        text = _find(part, mime)
         if text:
             return text
     return ""
+
+
+def _strip_html(html: str) -> str:
+    html = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
+    html = re.sub(r"(?i)<br\s*/?>|</p>", "\n", html)
+    return unescape(re.sub(r"<[^>]+>", "", html)).strip()
+
+
+def _plain_text(payload: dict) -> str:
+    # Muitos emails (newsletters, faturas) só têm HTML.
+    return _find(payload, "text/plain") or _strip_html(_find(payload, "text/html"))
 
 
 def _raw(msg: EmailMessage) -> str:
@@ -46,7 +59,8 @@ class Gmail:
     async def _get(self, message_id: str, fmt: str) -> dict:
         params = {"format": fmt}
         if fmt == "metadata":
-            params["metadataHeaders"] = ["From", "Subject"]
+            # A API só devolve os cabeçalhos pedidos.
+            params["metadataHeaders"] = ["From", "Subject", "Message-ID", "Reply-To", "References"]
         return (
             await request(self._token, "GET", f"{BASE}/messages/{message_id}", params=params)
         ).json()
@@ -81,6 +95,10 @@ class Gmail:
         body = _plain_text(m.get("payload", {}))
         return f"De: {h.get('from', '')}\nAssunto: {h.get('subject', '')}\n\n{body}"
 
+    async def describe(self, message_id: str) -> tuple[str, str]:
+        h = _headers((await self._get(message_id, "metadata")).get("payload", {}))
+        return h.get("reply-to") or h.get("from", ""), h.get("subject", "")
+
     async def send(self, to: str, subject: str, body: str) -> None:
         msg = EmailMessage()
         msg["To"], msg["Subject"] = to, subject
@@ -95,7 +113,8 @@ class Gmail:
         msg["To"] = h.get("reply-to") or h.get("from", "")
         msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
         if h.get("message-id"):
-            msg["In-Reply-To"] = msg["References"] = h["message-id"]
+            msg["In-Reply-To"] = h["message-id"]
+            msg["References"] = " ".join(x for x in (h.get("references"), h["message-id"]) if x)
         msg.set_content(body)
         payload = {"raw": _raw(msg), "threadId": original.get("threadId")}
         await request(self._token, "POST", f"{BASE}/messages/send", json=payload)

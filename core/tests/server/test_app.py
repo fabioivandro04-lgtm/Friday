@@ -163,7 +163,7 @@ def test_twilio_voice_webhook_requires_signature(cfg, tmp_path):
         data=params,
         headers={"X-Twilio-Signature": _sign(url, params), "host": "pc.tail1.ts.net"},
     )
-    assert ok.status_code == 200 and "wss://pc.tail1.ts.net/twilio/ws?t=" in ok.text
+    assert ok.status_code == 200 and f"wss://pc.tail1.ts.net/twilio/ws/{t}" in ok.text
 
 
 def test_twilio_ws_consumes_token_once(cfg, tmp_path):
@@ -172,13 +172,31 @@ def test_twilio_ws_consumes_token_once(cfg, tmp_path):
     app, tokens, calls = _twilio_app(cfg, tmp_path)
     t = tokens.issue({"greeting": "Olá"})
     client = _client(app)
-    with client.websocket_connect(f"/twilio/ws?t={t}") as ws:
+    with client.websocket_connect(f"/twilio/ws/{t}") as ws:
         ws.send_text(json.dumps({"event": "connected"}))
         ws.send_text(
             json.dumps({"event": "start", "start": {"streamSid": "MZ1", "callSid": "CA9"}})
         )
     assert calls == [({"streamSid": "MZ1", "callSid": "CA9"}, "Olá")]
     with pytest.raises(WebSocketDisconnect) as e:
-        with client.websocket_connect(f"/twilio/ws?t={t}"):
+        with client.websocket_connect(f"/twilio/ws/{t}"):
+            pass
+    assert e.value.code == 4401
+
+
+@pytest.mark.parametrize("path", ["/", "/health", "/pair"])
+def test_funnel_requests_only_reach_twilio_routes(cfg, path):
+    # Com o Tailscale Funnel ligado, a internet chega como 127.0.0.1: só /twilio é público.
+    resp = _client(create_app(cfg)).get(path, headers={"Tailscale-Funnel-Request": "?1"})
+    assert resp.status_code == 403
+
+
+def test_funnel_ws_refused(cfg):
+    app = create_app(cfg, voice_handler=lambda ws: ws.accept())
+    token = _client(app).get("/pair").json()["token"]
+    with pytest.raises(WebSocketDisconnect) as e:
+        with _client(app).websocket_connect(
+            f"/ws?token={token}", headers={"Tailscale-Funnel-Request": "?1"}
+        ):
             pass
     assert e.value.code == 4401

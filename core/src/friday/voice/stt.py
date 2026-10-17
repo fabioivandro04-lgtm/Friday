@@ -37,8 +37,19 @@ def summarise_segments(
 class FridayWhisperSTT(WhisperSTTService):
     """Igual ao WhisperSTTService, mas deixa o Whisper detetar a língua e guarda a confiança.
 
-    O `SttResult` segue no campo `result` do `TranscriptionFrame`.
+    O `SttResult` segue no campo `result` do `TranscriptionFrame`. Com `shared`, usa o
+    modelo já carregado em vez de carregar outro (cada sessão e chamada reutiliza-o).
     """
+
+    def __init__(self, *args: Any, shared: Any = None, **kwargs: Any) -> None:
+        self._shared = shared
+        super().__init__(*args, **kwargs)
+
+    def _load(self) -> None:
+        if self._shared is not None:
+            self._model = self._shared.get()
+        else:
+            super()._load()
 
     def _run(self, audio_float: np.ndarray, language: str | None):
         segments, info = self._model.transcribe(

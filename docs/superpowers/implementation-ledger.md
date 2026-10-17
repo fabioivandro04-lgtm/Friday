@@ -88,3 +88,23 @@ Final: minor (deferred): React StrictMode double connection in dev
 Final: minor (deferred): bench 'first audio' can be the filler, capping LLM comparisons at ~2 s
 Final: minor (deferred): bind to 127.0.0.1 + Tailscale IP instead of 0.0.0.0; document token-only protection behind tailscale serve
 ```
+
+## Partes 2 a 4 (integrações, proatividade, telemóvel)
+
+Decisões e verificações:
+
+- Ruling: Google por OAuth "aplicação de desktop" e Microsoft por device code (MSAL); APIs por REST/httpx com TokenSource injetável, testável com respx.
+- Ruling: lembretes não pedem confirmação (só afetam a própria Friday); `call_me` pede (custa dinheiro).
+- Ruling: o resumo diário é escrito pelo LLM a partir de dados reunidos pelo código; se o LLM falhar, vai em bruto.
+- Ruling: telemóvel = PWA instalável + Telegram; app nativa (Tauri mobile) fora do âmbito.
+- Ruling: chamadas Twilio substituem a sessão de voz ativa (uma sessão de cada vez, como no MVP).
+- Ruling: Gmail lista `is:unread in:inbox category:primary` (Promoções/Social ficam de fora).
+- Verificado ao vivo (CPU, sem contas reais): arranque com agendador, painéis "não ligados", conversa por voz, Whisper partilhado, pedidos via Funnel recusados (403).
+- Não verificado aqui: contas Google/Microsoft, Telegram e Twilio reais.
+
+Revisão final (revisor independente): 3 críticos e 8 importantes, todos corrigidos com testes:
+- tzdata no Windows; resumo canónico mostrado/dito nas confirmações (Telegram e voz) com destinatário, corpo e convidados; token do Twilio no caminho do <Stream>.
+- Threading/Reply-To do Gmail; Funnel só para /twilio; confirmações por texto duram 15 min e um "sim" tardio não vai ao LLM; token do Telegram fora dos logs.
+- Lembretes só dados como feitos se entregues; histórico do agente de texto guarda as chamadas de ferramentas; sem palavra de ativação nas chamadas; um só Whisper partilhado e pré-carregado.
+- Menores também corrigidos: fuso desconhecido do Graph, emails só em HTML, inbox do Outlook filtrada no servidor, segunda ação mutável recusada, call_me com confirmação, delimitador aleatório nos emails, chat id em texto, membros de grupos, falha de nota de voz, validação com tipos errados, resumo não repetido após reiniciar e com alternativa por mensagem, cache do service worker.
+- Menores adiados: os painéis do HUD só atualizam até 5 min depois de ações confirmadas no Telegram; horas inexistentes/repetidas na mudança de hora usam o comportamento padrão do Python.

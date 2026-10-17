@@ -142,14 +142,15 @@ ao telefone com o mesmo cérebro. Custa alguns cêntimos por minuto.
 
 1. Cria conta em <https://www.twilio.com>, compra um número com voz e copia o
    *Account SID* para `[twilio] account_sid` e o *Auth Token* para `TWILIO_AUTH_TOKEN=`.
-2. Torna o Core acessível à Twilio (HTTPS público) com `tailscale funnel --bg 8765` e põe
-   o endereço `https://<nome-do-pc>.<tailnet>.ts.net` em `public_url`.
+2. Abre à internet **só** o caminho da Twilio:
+   `tailscale funnel --bg --set-path /twilio http://127.0.0.1:8765/twilio`
+   e põe o endereço `https://<nome-do-pc>.<tailnet>.ts.net` em `public_url`.
 3. `to_number` = o teu número. A Friday **só** liga para esse número.
 4. `[twilio] enabled = true`; para o resumo por chamada, `[briefing] channel = "call"`.
 
 Segurança: os pedidos da Twilio são validados pela assinatura `X-Twilio-Signature`
-e cada chamada usa um token de uso único. Com o Funnel ligado, o Core fica acessível
-da internet: o `/pair` continua só no PC, e o `/ws` exige o token de emparelhamento.
+e cada chamada usa um token de uso único. Mesmo que o Funnel abra mais do que `/twilio`,
+o Core recusa pedidos vindos do Funnel para qualquer outro caminho (interface, `/pair`, `/ws`).
 
 ## Opções no `friday.toml`
 

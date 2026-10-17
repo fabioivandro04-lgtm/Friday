@@ -27,7 +27,19 @@ class ReminderStore:
             "CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, due_at TEXT NOT NULL,"
             " text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)"
         )
+        self._db.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)")
         self._db.commit()
+
+    def get_state(self, key: str) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT value FROM state WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_state(self, key: str, value: str) -> None:
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)", (key, value)
+            )
 
     def add(self, due_at: datetime, text: str) -> int:
         with self._lock, self._db:

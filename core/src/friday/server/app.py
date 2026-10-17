@@ -28,6 +28,10 @@ WS_UNAUTHORISED = 4401
 _PROXY_HEADERS = ("x-forwarded-for", "tailscale-user-login", "forwarded")
 
 
+def _from_funnel(conn: Request | WebSocket) -> bool:
+    return "tailscale-funnel-request" in conn.headers
+
+
 def _client_ip(conn: Request | WebSocket) -> str:
     return conn.client.host if conn.client else ""
 
@@ -57,6 +61,9 @@ def create_app(
     async def only_allowed_ips(request: Request, call_next):
         if not is_allowed_ip(_client_ip(request)):
             return JSONResponse({"detail": "forbidden"}, status_code=403)
+        if _from_funnel(request) and not request.url.path.startswith("/twilio/"):
+            # Pela internet (Tailscale Funnel) só a Twilio tem caminho aberto.
+            return JSONResponse({"detail": "forbidden"}, status_code=403)
         if not is_allowed_host(request.headers.get("host", "")):
             return JSONResponse({"detail": "bad host"}, status_code=400)
         return await call_next(request)
@@ -76,7 +83,8 @@ def create_app(
     @app.websocket("/ws")
     async def ws(websocket: WebSocket, token: str = "") -> None:
         allowed = (
-            is_allowed_ip(_client_ip(websocket))
+            not _from_funnel(websocket)
+            and is_allowed_ip(_client_ip(websocket))
             and is_allowed_host(websocket.headers.get("host", ""))
             and is_allowed_origin(websocket.headers.get("origin"))
             and token
@@ -114,8 +122,8 @@ def _add_twilio_routes(app: FastAPI, twilio: TwilioGateway) -> None:
             return JSONResponse({"detail": "unknown call"}, status_code=403)
         return Response(twiml_stream(twilio.ws_url(t)), media_type="application/xml")
 
-    @app.websocket("/twilio/ws")
-    async def twilio_ws(websocket: WebSocket, t: str = "") -> None:
+    @app.websocket("/twilio/ws/{t}")
+    async def twilio_ws(websocket: WebSocket, t: str) -> None:
         data = twilio.tokens.consume(t)
         if data is None:
             await websocket.close(code=WS_UNAUTHORISED)

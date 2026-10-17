@@ -93,7 +93,8 @@ async def test_history_is_kept_per_conversation():
 async def test_mutating_tool_waits_for_yes():
     client = FakeClient(_call("send", {"to": "João"}), _text("Queres que envie ao João?"))
     agent, sent = _agent(client)
-    assert await agent.reply("c", "envia ao João") == "Queres que envie ao João?"
+    first = await agent.reply("c", "envia ao João")
+    assert first.startswith("Queres que envie ao João?") and "Enviar a João" in first
     assert sent == []
     assert await agent.reply("c", "sim") == "Feito: enviado a João"
     assert sent == ["João"]
@@ -143,3 +144,47 @@ def test_guess_language():
     assert guess_language("what is the weather like tomorrow?", "pt") == "en"
     assert guess_language("que tempo vai fazer amanhã?", "en") == "pt"
     assert guess_language("ok", "en") == "en"
+
+
+async def test_user_sees_canonical_summary_not_just_llm_wording():
+    # O LLM pode ter sido manipulado por um email; o resumo vem do código, não dele.
+    client = FakeClient(_call("send", {"to": "x@evil.com"}), _text("Queres que responda ao João?"))
+    agent, _ = _agent(client)
+    reply = await agent.reply("c", "lê o último email")
+    assert "Enviar a x@evil.com" in reply and "sim ou não" in reply
+
+
+async def test_late_yes_after_expiry_is_not_sent_to_llm():
+    t = [0.0]
+    client = FakeClient(_call("send", {"to": "João"}), _text("Confirmas?"))
+    agent, sent = _agent(client)
+    agent._clock = lambda: t[0]
+    await agent.reply("c", "envia ao João")
+    agent.pending("c")  # ainda pendente
+    t[0] = 10_000
+    reply = await agent.reply("c", "sim")
+    assert "expirou" in reply and sent == [] and len(client.calls) == 2
+
+
+async def test_pending_lasts_minutes_on_text():
+    t = [0.0]
+    client = FakeClient(_call("send", {"to": "João"}), _text("Confirmas?"))
+    agent, sent = _agent(client)
+    agent._clock = lambda: t[0]
+    await agent.reply("c", "envia ao João")
+    t[0] = 5 * 60
+    assert (await agent.reply("c", "sim")).startswith("Feito")
+    assert sent == ["João"]
+
+
+async def test_tool_results_are_remembered_between_messages():
+    client = FakeClient(_call("agenda", {}), _text("Tens uma reunião."), _text("É às 10h."))
+    agent, _ = _agent(client)
+    await agent.reply("c", "o que tenho hoje?")
+    await agent.reply("c", "a que horas?")
+    history = client.calls[2][0]
+    assert any(m["role"] == "tool" and m["content"] == "- 10:00 Reunião" for m in history)
+    # cada mensagem "tool" vem logo depois da chamada que a pediu
+    for i, m in enumerate(history):
+        if m["role"] == "tool":
+            assert history[i - 1].get("tool_calls")

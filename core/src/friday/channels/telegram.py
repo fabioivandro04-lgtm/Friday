@@ -20,6 +20,11 @@ _MAX_LEN = 4000
 _POLL_TIMEOUT_S = 30
 
 
+def redact(text: str, bot: TelegramBot) -> str:
+    """Tira o token do bot de mensagens de erro (os URLs da API contêm-no)."""
+    return text.replace(bot._token, "<token>")
+
+
 class TelegramBot:
     def __init__(
         self,
@@ -29,9 +34,11 @@ class TelegramBot:
         transcribe: Transcribe | None = None,
         base_url: str = "https://api.telegram.org",
     ) -> None:
+        self._token = token
         self._api = f"{base_url}/bot{token}"
         self._files = f"{base_url}/file/bot{token}"
-        self._allowed = allowed_chat_id
+        # Aceita "123" vindo do TOML como texto.
+        self._allowed = int(allowed_chat_id) if allowed_chat_id not in (None, "") else None
         self._handler = handler
         self._transcribe = transcribe
         self._offset = 0
@@ -74,8 +81,10 @@ class TelegramBot:
                 f"O teu chat id é {chat_id}. Põe-no em [telegram] allowed_chat_id no friday.toml.",
             )
             return
-        if chat_id != self._allowed:
-            logger.warning("Mensagem ignorada de um chat não autorizado: %s", chat_id)
+        sender = message.get("from", {}).get("id", chat_id)
+        if chat_id != self._allowed or sender != self._allowed:
+            # Outro chat, ou outra pessoa num grupo onde o bot esteja.
+            logger.warning("Mensagem ignorada (chat %s, remetente %s)", chat_id, sender)
             return
         text = message.get("text", "")
         prefix = ""
@@ -83,7 +92,12 @@ class TelegramBot:
             if self._transcribe is None:
                 await self.send(chat_id, "As notas de voz não estão disponíveis.")
                 return
-            text = await self._transcribe(await self._download(message["voice"]["file_id"]))
+            try:
+                text = await self._transcribe(await self._download(message["voice"]["file_id"]))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Nota de voz: %s", redact(str(e), self))
+                await self.send(chat_id, "Não consegui perceber a nota de voz. Tenta outra vez?")
+                return
             prefix = f"«{text}»\n\n"
         if not text.strip():
             return
@@ -113,6 +127,8 @@ class TelegramBot:
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 — sem rede: tenta outra vez mais tarde
-                logger.warning("Telegram: %s (nova tentativa em %.0fs)", e, delay)
+                logger.warning(
+                    "Telegram: %s (nova tentativa em %.0fs)", redact(str(e), self), delay
+                )
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, 60.0)

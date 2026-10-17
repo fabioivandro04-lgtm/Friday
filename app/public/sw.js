@@ -18,12 +18,15 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/ws") || url.pathname.startsWith("/pair") || url.pathname.startsWith("/twilio")) return;
+  if (["/ws", "/pair", "/twilio", "/health"].some((p) => url.pathname.startsWith(p))) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((c) => c.put(event.request, copy));
+        if (response.ok) {
+          // Só guarda respostas boas (um erro não pode ficar em cache).
+          const copy = response.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy));
+        }
         return response;
       })
       .catch(() => caches.match(event.request).then((hit) => hit || caches.match("/"))),

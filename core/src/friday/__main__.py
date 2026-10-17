@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -38,6 +39,9 @@ from friday.tools.registry import Tool, ToolRegistry
 from friday.tools.weather import make_weather_tool
 from friday.voice.offline_stt import FileTranscriber
 from friday.voice.processors import VoiceDeps
+from friday.voice.whisper_model import SharedWhisper
+
+logger = logging.getLogger("friday")
 
 # A interface (app/dist, gerada por `npm run build`) é servida em / para o telemóvel.
 APP_DIST = Path(__file__).resolve().parents[3] / "app" / "dist"
@@ -62,6 +66,8 @@ def _call_me_tool(caller: TwilioCaller) -> Tool:
         description="Liga para o telemóvel do utilizador (só o número configurado).",
         parameters={"type": "object", "properties": {"message": {"type": "string"}}},
         handler=call_me,
+        mutating=True,  # custa dinheiro: pede confirmação
+        summary=lambda a: "Ligar-te para o telemóvel agora",
     )
 
 
@@ -89,12 +95,14 @@ def build_services(cfg: Config, embedder: Embedder | None = None) -> Services:
         registry.register(tool)
 
     announcer = Announcer()
+    whisper = SharedWhisper(cfg.stt.model, cfg.stt.device)
     deps = VoiceDeps(
         registry=registry,
         confirmations=ConfirmationManager(),
         memory=memory,
         hub=hub,
         announcer=announcer,
+        whisper=whisper,
     )
     client = OpenAIChatClient(select_endpoint(cfg.llm))
     agent = TextAgent(cfg, registry, memory, client)
@@ -107,20 +115,32 @@ def build_services(cfg: Config, embedder: Embedder | None = None) -> Services:
 
         twilio = TwilioGateway(cfg.twilio, tokens, telephony)
 
+    async def warm_whisper() -> None:
+        # Carrega o Whisper ao arrancar: a primeira conversa (ou chamada) não fica à espera.
+        await asyncio.to_thread(whisper.get)
+
     telegram = None
-    background: list[Callable[[], Awaitable[None]]] = []
+    background: list[Callable[[], Awaitable[None]]] = [warm_whisper]
     if cfg.telegram.enabled and cfg.telegram.token:
         telegram = TelegramBot(
             cfg.telegram.token,
             cfg.telegram.allowed_chat_id,
             agent.reply,
-            transcribe=FileTranscriber(cfg.stt.model, cfg.stt.device),
+            transcribe=FileTranscriber(
+                cfg.stt.model, cfg.stt.device, loader=lambda *_: whisper.get()
+            ),
         )
         background.append(telegram.run)
 
     briefing = Briefing(hub, weather.handler, client, tz, now=now)
     notifier = Notifier(telegram=telegram, announcer=announcer)
     deliver = caller.call if (caller and cfg.briefing.channel == "call") else None
+    if cfg.briefing.enabled and cfg.briefing.channel == "call" and caller is None:
+        logger.warning(
+            '[briefing] channel = "call" mas o [twilio] está desligado: vai por mensagem.'
+        )
+    if telegram is None:
+        logger.warning("Telegram desligado: lembretes só chegam em voz, com a app ligada.")
     scheduler = Scheduler(
         reminders, notifier, briefing, cfg.briefing, now=now, deliver_briefing=deliver
     )
@@ -160,6 +180,8 @@ def _connect(cfg: Config, service: str) -> None:
 def main() -> None:
     args = build_parser().parse_args()
     logging.basicConfig(level=logging.INFO)
+    # O httpx escreve os URLs pedidos, e os da API do Telegram contêm o token do bot.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     # core/.env (chaves) ao lado do friday.toml; variáveis já definidas têm prioridade.
     env = {**read_env_file(args.config.parent / ".env"), **os.environ}
     cfg = load_config(args.config, env=env)

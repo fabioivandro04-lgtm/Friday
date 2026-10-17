@@ -75,8 +75,11 @@ class ConfirmationManager:
         self._pending: PendingAction | None = None
         self._expired_id: str | None = None
 
-    def propose(self, tool: Tool, args: dict[str, Any]) -> PendingAction:
-        summary = tool.summary(args) if tool.summary else f"Executar {tool.name}"
+    def propose(
+        self, tool: Tool, args: dict[str, Any], summary: str | None = None
+    ) -> PendingAction:
+        if summary is None:
+            summary = tool.summary(args) if tool.summary else f"Executar {tool.name}"
         self._pending = PendingAction(
             id=uuid.uuid4().hex,
             tool=tool.name,

@@ -111,7 +111,9 @@ async def run_voice_session(
     )
 
     # Carregar modelos bloqueia: fora do event loop, para não congelar o servidor.
-    stt = await asyncio.to_thread(FridayWhisperSTT, model=cfg.stt.model, device=cfg.stt.device)
+    stt = await asyncio.to_thread(
+        FridayWhisperSTT, model=cfg.stt.model, device=cfg.stt.device, shared=deps.whisper
+    )
 
     endpoint = select_endpoint(cfg.llm)
     llm = OpenAILLMService(
@@ -136,7 +138,7 @@ async def run_voice_session(
         vad_analyzer=SileroVADAnalyzer(), audio_idle_timeout=_AUDIO_IDLE_TIMEOUT_S
     )
     wake = None
-    if cfg.wake.enabled:
+    if cfg.wake.enabled and telephony is None:  # ao telefone não faz sentido dizer "Friday"
         # Sempre à escuta: o Pipecat só abre um turno depois de ouvir "Friday",
         # e é ele que diz ao cérebro quando está acordado (uma só fonte de verdade).
         wake = WakeGate(cfg.wake.phrases)
@@ -186,7 +188,8 @@ async def run_voice_session(
         )
         pending = deps.confirmations.pending()
         if result.startswith("PENDENTE:") and pending is not None:
-            await brain.emit(events.confirm_request(pending))
+            await brain.announce_pending(pending)
+            result += " A Friday já leu o pedido ao utilizador: não repitas a pergunta, espera."
         await params.result_callback(result)
 
     for spec in deps.registry.schemas():

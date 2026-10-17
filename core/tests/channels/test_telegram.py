@@ -131,3 +131,55 @@ async def test_handler_error_is_reported_not_raised():
     bot = TelegramBot("TOKEN", 42, broken)
     await bot.poll_once()
     assert "correu mal" in json.loads(send.calls[0].request.content)["text"]
+
+
+def test_token_is_redacted_from_errors():
+    from friday.channels.telegram import redact
+
+    bot = TelegramBot("123:SECRET", 42, None)
+    assert "SECRET" not in redact(
+        "GET https://api.telegram.org/bot123:SECRET/getUpdates failed", bot
+    )
+
+
+@respx.mock
+async def test_chat_id_as_string_in_config_still_matches():
+    respx.get(f"{API}/getUpdates").mock(
+        return_value=_updates({"chat": {"id": 42}, "from": {"id": 42}, "text": "olá"})
+    )
+    respx.post(f"{API}/sendMessage").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{API}/sendChatAction").mock(return_value=httpx.Response(200, json={"ok": True}))
+    bot, seen = _bot(allowed="42")
+    await bot.poll_once()
+    assert seen == [("telegram:42", "olá")]
+
+
+@respx.mock
+async def test_group_members_other_than_owner_are_ignored():
+    respx.get(f"{API}/getUpdates").mock(
+        return_value=_updates({"chat": {"id": 42}, "from": {"id": 999}, "text": "envia tudo"})
+    )
+    send = respx.post(f"{API}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    bot, seen = _bot(allowed=42)
+    await bot.poll_once()
+    assert seen == [] and not send.called
+
+
+@respx.mock
+async def test_voice_note_failure_is_reported():
+    respx.get(f"{API}/getUpdates").mock(
+        return_value=_updates({"chat": {"id": 42}, "voice": {"file_id": "F1"}})
+    )
+    respx.get(f"{API}/getFile").mock(return_value=httpx.Response(500))
+    send = respx.post(f"{API}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+
+    async def transcribe(data):
+        return "x"
+
+    bot, seen = _bot(transcribe=transcribe)
+    await bot.poll_once()
+    assert seen == [] and "nota de voz" in json.loads(send.calls[0].request.content)["text"]

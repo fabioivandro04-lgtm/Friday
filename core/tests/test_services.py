@@ -35,8 +35,8 @@ def test_minimal_setup_has_scheduler_and_all_tools(tmp_path):
         "list_reminders",
     } <= names
     assert s.telegram is None and s.twilio is None
-    assert len(s.background) == 1  # só o agendador
-    assert s.deps.announcer is not None
+    assert len(s.background) == 2  # agendador + pré-carregar o Whisper
+    assert s.deps.announcer is not None and s.deps.whisper is not None
 
 
 def test_telegram_needs_token(tmp_path):
@@ -44,7 +44,7 @@ def test_telegram_needs_token(tmp_path):
     assert build_services(cfg, embedder=FakeEmbedder()).telegram is None
     cfg = _cfg(tmp_path, telegram=TelegramConfig(enabled=True, allowed_chat_id=42, token="T"))
     s = build_services(cfg, embedder=FakeEmbedder())
-    assert s.telegram is not None and len(s.background) == 2
+    assert s.telegram is not None and len(s.background) == 3
 
 
 def test_twilio_gateway_and_call_briefing(tmp_path):
@@ -61,3 +61,13 @@ def test_twilio_gateway_and_call_briefing(tmp_path):
     assert s.twilio is not None
     names = {t["function"]["name"] for t in s.deps.registry.schemas()}
     assert "call_me" in names
+    assert s.deps.registry.get("call_me").mutating  # chamadas pagas pedem confirmação
+
+
+def test_call_briefing_without_twilio_is_warned(tmp_path, caplog):
+    import logging
+
+    cfg = _cfg(tmp_path, briefing=BriefingConfig(enabled=True, channel="call"))
+    with caplog.at_level(logging.WARNING, logger="friday"):
+        build_services(cfg, embedder=FakeEmbedder())
+    assert "twilio" in caplog.text.lower()

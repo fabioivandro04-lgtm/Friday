@@ -85,6 +85,7 @@ class VoiceDeps:
     memory: MemoryStore
     hub: IntegrationHub | None = None
     announcer: Announcer | None = None
+    whisper: Any = None  # SharedWhisper: um só modelo para app, chamadas e notas de voz
 
 
 class FridayBrain(FrameProcessor):
@@ -123,6 +124,14 @@ class FridayBrain(FrameProcessor):
 
     async def emit(self, event: dict[str, Any]) -> None:
         await self.push_frame(RTVIServerMessageFrame(data=event))
+
+    async def announce_pending(self, action: PendingAction) -> None:
+        """Diz e mostra o resumo canónico, não as palavras do LLM (que podem ser manipuladas)."""
+        await self.emit(events.confirm_request(action))
+        question = "Confirmas?" if self.lang == "pt" else "Do you confirm?"
+        await self.push_frame(
+            TTSSpeakFrame(f"{action.summary}. {question}", append_to_context=False)
+        )
 
     async def say(self, key: str) -> None:
         await self.push_frame(TTSSpeakFrame(_SAY[self.lang][key], append_to_context=False))
